@@ -1,0 +1,10 @@
+REQ -> comecar por send e receive
+REP -> comecar por request e receive
+
+REQ/REP -> padrão rígido
+
+PUB/SUB -> poll 
+
+Shared queue/load balance -> 
+
+https://zguide.zeromq.org/docs/chapter2/#Shared-Queue-DEALER-and-ROUTER-sockets
