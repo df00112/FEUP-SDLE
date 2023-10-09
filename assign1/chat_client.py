@@ -32,7 +32,8 @@ receiver_thread.start()
 try:
     while True:
         message = input("Topic Username Message:")
-        if(message==""):
+        if(len(message.split(" "))<3):
+            print("MEssage too short")
             continue
         message=message.split(" ")
         topic = message[0]
