@@ -1,23 +1,51 @@
-from kademlia.network import Server
-import asyncio
-
-async def main():
-    # Create a Kademlia node
-    server = Server()
-    
-    # Start the node and listen on a specific address and port
-    server.listen(8468)
-
-    # Bootstrap from an existing node (replace with actual node address and port)
-    #server.bootstrap([("123.123.123.123", 5678)])
-
-    # Store a key-value pair in the DHT
-    await server.set("my_key", "my_value")
-
-    # Retrieve a value from the DHT
-    result = await server.get("my_key")
-    print("Retrieved value:", result)
-
+import json
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    # Create a dictionary to store data for multiple individuals
+    data = {
+        "john_doe": {
+            "name": "John Doe",
+            "age": 30,
+            "items": {
+                "apples": {
+                    "quantity": 10,
+                    "bought": False
+                }
+            }
+        },
+        "phill_doe": {
+            "name": "Phill Doe",
+            "age": 35,
+            "items": {
+                "apples": {
+                    "quantity": 15,
+                    "bought": True
+                }
+            }
+        }
+    }
+
+    # Add a "bananas" item for "John Doe"
+    data["john_doe"]["items"]["bananas"] = {
+        "quantity": 5,
+        "bought": True  # For example, John Doe has bought bananas
+    }
+
+    # save the data to a json file
+    # Serialize the dictionary to a JSON string
+    json_data = json.dumps(data)
+    with open("./data/cloud/list_data.json", "w") as f:
+        json.dump(json_data, f, indent=4)
+
+    user_data = {
+        "john_doe": {
+            "name": "John Doe",
+            "password": "123456"
+        }
+    }
+
+    json_data = json.dumps(user_data)
+    with open("./data/cloud/user_data.json", "w") as f:
+        json.dump(json_data, f, indent=4)
+
+    local_data = data
+    
