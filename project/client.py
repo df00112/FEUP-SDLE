@@ -1,6 +1,7 @@
 import zmq
 import json
-
+import datetime
+import pytz
 """
 def receive_messages():
     while True:
@@ -53,8 +54,6 @@ def auth():
     global username
     global data
     while True:
-        print(str(data["john_doe"]["password"]))
-
         username=input("Enter your username: ")
         password=input("Enter your password: ")
         
@@ -70,48 +69,105 @@ def auth():
             print("Authentication failed")
 
 
-def display_list(list_id):
-    global username
-    global data
-    print(f"Shopping list: {data[username]['lists'][list_id]['name']}")
+def display_list(list):
+    print("\n=====================================")
+    print(f"Shopping list: {list['name']}")
     print("Items:")
-    for item in data[username]["lists"][list_id]:
+    for item in list:
         if item != "name" and item != "lastUpdate":
-            print(f"{item}: {data[username]['lists'][list_id][item]['quantity']}")
+            print(f"{item}: {list[item]['quantity']} {'(bought)' if list[item]['bought'] == True else ''}")
+    print("=====================================\n")
 
-def edit_list(list_id):
-    global username
-    global data
+def edit_list(list):
     while True:
         # display the items
-        display_list(list_id)
+        display_list(list)
 
-        action=input("Enter an action (add/delete/check/quit): ").lower()
+        action=input("Enter an action (Add/Update/Remove/Status/Quit): ").lower()
 
         if action == "add":
-            item=input("Enter an item to add: ")
-            data[username]["lists"][list][item]={"quantity": 1, "bought": False}
+            item=input("Enter a new item to add: ")
+            while item in list:
+                print("Item already exists")
+                item=input("Enter a new item to add: ")
+            quantity=input("Enter the quantity: ")
+            while not quantity.isnumeric():
+                print("Invalid quantity")
+                quantity=input("Enter the quantity: ")
+            list[item]={"quantity": int(quantity), "bought": False}
             print("Item added")
-        elif action == "delete":
-            item=input("Enter an item to delete: ")
-            if item in data[username]["lists"][list]:
-                del data[username]["lists"][list][item]
-                print("Item deleted")
-            else:
-                print("Item not found")
+            
+        elif action == "update":
+            item=input("Enter an item to update: ")
+            while item not in list:
+                print("Item doens't exists")
+                item=input("Enter a item to update: ")
+                
+            quantity=input("Enter the quantity: ")
+            while not quantity.isnumeric():
+                print("Invalid quantity")
+                quantity=input("Enter the quantity: ")
+            
+            bought=input("Enter the status (bought/not bought): ").lower()
+            while bought != "bought" and bought != "not bought":
+                print("Invalid status")
+                bought=input("Enter the status (bought/not bought): ").lower()
+            list[item]={"quantity": int(quantity), "bought": True if bought == "bought" else False}
+            
+            print("Item updated")
+        
+        elif action == "remove":
+            item=input("Enter an item to remove: ")
+            while item not in list:
+                print("Item doens't exists")
+                item=input("Enter a item to remove: ")
+            del list[item]
+            print("Item removed")
+            
+        elif action == "status":
+            item=input("Enter an item to check the status: ")
+            while item not in list:
+                print("Item doens't exists")
+                item=input("Enter a item to check the status: ")
+            bought=input("Enter the status (bought/not bought): ").lower()
+            while bought != "bought" and bought != "not bought":
+                print("Invalid status")
+                bought=input("Enter the status (bought/not bought): ").lower()
+                
+            # update the bought field
+            list[item]["bought"] = True if bought == "bought" else False
+            
+            print("The status was updated")
+            
         elif action == "quit":
             break
         else:
             print("Invalid action")
+    
+    #update timestamp
+    list["lastUpdate"] = datetime.datetime.now(pytz.timezone("Europe/Lisbon")).strftime("%Y-%m-%d %H:%M:%S")  
+    
+    return list
+
+def save_locally(list_id,list):
+    global username
+    global data
+    # save the list locally
+    data[username]["lists"][list_id] = list
+
+    json_data = json.dumps(data)
+    with open("./data/local/users.json", "w") as f:
+        json.dump(json_data, f, indent=4)
 
 def offline():
     global username
     global data
   
     # display the shopping lists
+    print("\n=====================================")
     print("Shopping lists:")
     for list_id in data[username]["lists"]:
-        print(f"{list_id}: {data[username]['lists'][list_id]['name']}")
+        print(f"{list_id}: {data[username]['lists'][list_id]['name']} (Last Update: {data[username]['lists'][list_id]['lastUpdate']})")
 
     while True:
         # ask for the list to edit
@@ -120,7 +176,13 @@ def offline():
         # check if the list exists
         if list_id in data[username]["lists"]:
             print("List found")
-            edit_list(list_id)
+            list=edit_list(data[username]["lists"][list_id])
+            
+            print("Saving changes...")
+            save_locally(list_id,list)
+            print("Changes saved")
+            print("Do you want to send the changes to the server? (y/n)")
+            
             break
 
 
