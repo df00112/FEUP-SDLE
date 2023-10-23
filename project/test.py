@@ -4,47 +4,62 @@ if __name__ == '__main__':
     data = {
         "john_doe": {
             "name": "John Doe",
-            "age": 30,
-            "items": {
-                "apples": {
-                    "quantity": 10,
-                    "bought": False
+            "password": "123456",
+            "lists": {
+                "5556": {
+                    "name":"Compras para amanhã",
+                    "lastUpdate": "2021-03-01 12:00:00",
+                    "apples": {
+                        "quantity": 10,
+                        "bought": False
+                    },
+                    "bananas": {
+                        "quantity": 5,
+                        "bought": True
+                    },
+                    "oranges": {
+                        "quantity": 3,
+                        "bought": False
+                    }
+                },
+                "5557": {
+                    "name": "Compras para hoje",
+                    "lastUpdate": "2021-05-01 12:00:00",
+                    "water": {
+                        "quantity": 15,
+                        "bought": True
+                    },
+                    "chicken": {
+                        "quantity": 2,
+                        "bought": True
+                    },
                 }
             }
         },
         "phill_doe": {
             "name": "Phill Doe",
-            "age": 35,
-            "items": {
-                "apples": {
-                    "quantity": 15,
-                    "bought": True
+            "password": "123456",
+            "lists": {
+                "5557": {
+                    "name": "Compras para hoje",
+                    "lastUpdate": "2021-05-01 12:00:00",
+                    "water": {
+                        "quantity": 15,
+                        "bought": True
+                    },
+                    "chicken": {
+                        "quantity": 2,
+                        "bought": True
+                    },
                 }
             }
         }
     }
 
-    # Add a "bananas" item for "John Doe"
-    data["john_doe"]["items"]["bananas"] = {
-        "quantity": 5,
-        "bought": True  # For example, John Doe has bought bananas
-    }
-
     # save the data to a json file
     # Serialize the dictionary to a JSON string
     json_data = json.dumps(data)
-    with open("./data/cloud/list_data.json", "w") as f:
-        json.dump(json_data, f, indent=4)
-
-    user_data = {
-        "john_doe": {
-            "name": "John Doe",
-            "password": "123456"
-        }
-    }
-
-    json_data = json.dumps(user_data)
-    with open("./data/cloud/user_data.json", "w") as f:
+    with open("./data/local/users.json", "w") as f:
         json.dump(json_data, f, indent=4)
 
     local_data = data
