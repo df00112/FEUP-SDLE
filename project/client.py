@@ -165,6 +165,8 @@ def offline():
   
     # display the shopping lists
     print("\n=====================================")
+    list_keys = list(data[username]["lists"].keys())
+    print(f"Shopping lists: {list_keys}")
     print("Shopping lists:")
     for list_id in data[username]["lists"]:
         print(f"{list_id}: {data[username]['lists'][list_id]['name']} (Last Update: {data[username]['lists'][list_id]['lastUpdate']})")
