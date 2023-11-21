@@ -9,19 +9,19 @@ INTERVAL_INIT = 1
 INTERVAL_MAX = 32
 
 #  Paranoid Pirate Protocol constants
-PPP_READY = b"\x01"      # Signals worker is ready
-PPP_HEARTBEAT = b"\x02"  # Signals worker heartbeat
+PPP_READY = b"\x01"      # Signals server is ready
+PPP_HEARTBEAT = b"\x02"  # Signals server heartbeat
 
-def worker_socket(context, poller):
+def server_socket(context, poller):
     """Helper function that returns a new configured socket
        connected to the Paranoid Pirate queue"""
-    worker = context.socket(zmq.DEALER) # DEALER
+    server = context.socket(zmq.DEALER) # DEALER
     identity = b"%04X-%04X" % (randint(0, 0x10000), randint(0, 0x10000))
-    worker.setsockopt(zmq.IDENTITY, identity)
-    poller.register(worker, zmq.POLLIN)
-    worker.connect("tcp://localhost:5556")
-    worker.send(PPP_READY)
-    return worker
+    server.setsockopt(zmq.IDENTITY, identity)
+    poller.register(server, zmq.POLLIN)
+    server.connect("tcp://localhost:5556")
+    server.send(PPP_READY)
+    return server
 
 
 context = zmq.Context(1)
@@ -32,17 +32,17 @@ interval = INTERVAL_INIT
 
 heartbeat_at = time.time() + HEARTBEAT_INTERVAL
 
-worker = worker_socket(context, poller)
+server = server_socket(context, poller)
 cycles = 0
 while True:
     socks = dict(poller.poll(HEARTBEAT_INTERVAL * 1000))
 
-    # Handle worker activity on backend
-    if socks.get(worker) == zmq.POLLIN:
+    # Handle server activity on backend
+    if socks.get(server) == zmq.POLLIN:
         #  Get message
         #  - 3-part envelope + content -> request
         #  - 1-part HEARTBEAT -> heartbeat
-        frames = worker.recv_multipart()
+        frames = server.recv_multipart()
         if not frames:
             break # Interrupted
 
@@ -56,7 +56,7 @@ while True:
                 print("I: Simulating CPU overload")
                 time.sleep(3)
             print("I: Normal reply")
-            worker.send_multipart(frames)
+            server.send_multipart(frames)
             liveness = HEARTBEAT_LIVENESS
             time.sleep(1)  # Do some heavy work
         elif len(frames) == 1 and frames[0] == PPP_HEARTBEAT:
@@ -74,12 +74,12 @@ while True:
 
             if interval < INTERVAL_MAX:
                 interval *= 2
-            poller.unregister(worker)
-            worker.setsockopt(zmq.LINGER, 0)
-            worker.close()
-            worker = worker_socket(context, poller)
+            poller.unregister(server)
+            server.setsockopt(zmq.LINGER, 0)
+            server.close()
+            server = server_socket(context, poller)
             liveness = HEARTBEAT_LIVENESS
     if time.time() > heartbeat_at:
         heartbeat_at = time.time() + HEARTBEAT_INTERVAL
-        print("I: Worker heartbeat")
-        worker.send(PPP_HEARTBEAT)
+        print("I: server heartbeat")
+        server.send(PPP_HEARTBEAT)
