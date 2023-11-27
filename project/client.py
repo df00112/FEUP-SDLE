@@ -2,6 +2,13 @@ import zmq
 import json
 import datetime
 import pytz
+
+PROXYLIST=["tcp://127.0.0.1:5555","tcp://127.0.0.1:5557"]
+MAX_RETRIES=3
+TIMEOUT=3500 #milliseconds
+
+
+
 """
 def receive_messages():
     while True:
@@ -9,12 +16,6 @@ def receive_messages():
         print(f"Received update: {update_message}")
         
         
-context = zmq.Context()
-subscriber = context.socket(zmq.SUB)
-subscriber.connect("tcp://127.0.0.1:5556")
-
-client = context.socket(zmq.REQ)
-client.connect("tcp://127.0.0.1:5557")
 
 # Subscribe to shopping list updates
 subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
@@ -69,37 +70,37 @@ def auth():
             print("Authentication failed")
 
 
-def display_list(list):
+def display_list(lst):
     print("\n=====================================")
-    print(f"Shopping list: {list['name']}")
+    print(f"Shopping list: {lst['name']}")
     print("Items:")
-    for item in list:
+    for item in lst:
         if item != "name" and item != "lastUpdate":
-            print(f"{item}: {list[item]['quantity']} {'(bought)' if list[item]['bought'] == True else ''}")
+            print(f"{item}: {lst[item]['quantity']} {'(bought)' if lst[item]['bought'] == True else ''}")
     print("=====================================\n")
 
-def edit_list(list):
+def edit_list(lst):
     while True:
         # display the items
-        display_list(list)
+        display_list(lst)
 
         action=input("Enter an action (Add/Update/Remove/Status/Quit): ").lower()
 
         if action == "add":
             item=input("Enter a new item to add: ")
-            while item in list:
+            while item in lst:
                 print("Item already exists")
                 item=input("Enter a new item to add: ")
             quantity=input("Enter the quantity: ")
             while not quantity.isnumeric():
                 print("Invalid quantity")
                 quantity=input("Enter the quantity: ")
-            list[item]={"quantity": int(quantity), "bought": False}
+            lst[item]={"quantity": int(quantity), "bought": False}
             print("Item added")
             
         elif action == "update":
             item=input("Enter an item to update: ")
-            while item not in list:
+            while item not in lst:
                 print("Item doens't exists")
                 item=input("Enter a item to update: ")
                 
@@ -112,21 +113,21 @@ def edit_list(list):
             while bought != "bought" and bought != "not bought":
                 print("Invalid status")
                 bought=input("Enter the status (bought/not bought): ").lower()
-            list[item]={"quantity": int(quantity), "bought": True if bought == "bought" else False}
+            lst[item]={"quantity": int(quantity), "bought": True if bought == "bought" else False}
             
             print("Item updated")
         
         elif action == "remove":
             item=input("Enter an item to remove: ")
-            while item not in list:
+            while item not in lst:
                 print("Item doens't exists")
                 item=input("Enter a item to remove: ")
-            del list[item]
+            del lst[item]
             print("Item removed")
             
         elif action == "status":
             item=input("Enter an item to check the status: ")
-            while item not in list:
+            while item not in lst:
                 print("Item doens't exists")
                 item=input("Enter a item to check the status: ")
             bought=input("Enter the status (bought/not bought): ").lower()
@@ -135,7 +136,7 @@ def edit_list(list):
                 bought=input("Enter the status (bought/not bought): ").lower()
                 
             # update the bought field
-            list[item]["bought"] = True if bought == "bought" else False
+            lst[item]["bought"] = True if bought == "bought" else False
             
             print("The status was updated")
             
@@ -145,15 +146,15 @@ def edit_list(list):
             print("Invalid action")
     
     #update timestamp
-    list["lastUpdate"] = datetime.datetime.now(pytz.timezone("Europe/Lisbon")).strftime("%Y-%m-%d %H:%M:%S")  
+    lst["lastUpdate"] = datetime.datetime.now(pytz.timezone("Europe/Lisbon")).strftime("%Y-%m-%d %H:%M:%S")  
     
-    return list
+    return lst
 
-def save_locally(list_id,list):
+def save_locally(list_id, listToBeSaved):
     global username
     global data
     # save the list locally
-    data[username]["lists"][list_id] = list
+    data[username]["lists"][list_id] = listToBeSaved
 
     json_data = json.dumps(data)
     with open("./data/local/users.json", "w") as f:
@@ -178,25 +179,58 @@ def offline():
         # check if the list exists
         if list_id in data[username]["lists"]:
             print("List found")
-            list=edit_list(data[username]["lists"][list_id])
+            lst=edit_list(data[username]["lists"][list_id])
             
             print("Saving changes...")
-            save_locally(list_id,list)
+            save_locally(list_id,lst)
             print("Changes saved")
             print("Do you want to send the changes to the server? (y/n)")
             
             break
 
 
+def connectToProxy():
+    global context
+    global client
+    poller = zmq.Poller()
+    for proxy in PROXYLIST:
+        print(f"Trying to connect to {proxy}")
+        client= context.socket(zmq.REQ)
+        client.connect(proxy)
+        try:
+            amountOfRetries = 0
+            
+            while amountOfRetries < MAX_RETRIES:
+                client.send_multipart([b'ping'])
+                
+                poller.register(client, zmq.POLLIN)
+                poller = zmq.Poller()
+                poller.register(client, zmq.POLLIN)
 
+                # Wait for the specified timeout for a response
+                socks = dict(poller.poll(TIMEOUT))
+                if client in socks and socks[client] == zmq.POLLIN:
+                    # Receive reply from server
+                    message = client.recv_multipart()
+                    print(f"Received reply: {message}")
+                    return True
+                else:
+                    print("Retrying to connect to the proxy")
+                    client.close()
+                    amountOfRetries += 1 
+                    client= context.socket(zmq.REQ)
+                    client.connect(proxy)           
+        except KeyboardInterrupt:
+            break
+    print("Max retries reached. Exiting...")
+    return False
+    
 
 if __name__ == "__main__":
-    """ context = zmq.Context()
-    client = context.socket(zmq.REQ)
-    client.connect("tcp://127.0.0.1:5557") """
-
     data = None
     username = None
+    context = zmq.Context()
+    client = context.socket(zmq.REQ)
     # open the json file
     with open("./data/local/users.json", "r") as f:
         data = json.load(f)
@@ -207,12 +241,15 @@ if __name__ == "__main__":
     auth()
 
     # stabilish connection with the server
-    
-    # offline mode
-    offline()
-
-
-
+    if(connectToProxy()):
+        print("Connected to a proxy")
+        # online mode
+        #online()
+    else:
+        exit()
+        print("No proxy available")
+        # offline mode
+        offline()
 
 
 """ timeout 2 seconds
