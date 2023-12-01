@@ -25,7 +25,7 @@ class AWORSet:
 
     def remove(self,item_name):
         
-        min_counter=sys.maxint
+        min_counter=sys.maxsize
         key_to_remove=None
         for key in self.items:
             if key[0]==item_name:
@@ -71,7 +71,7 @@ class AWORSet:
             print(key[0],"-", self.items[key].quantity.lookup(),"-",text)
 
 # Example usage
-shopping_list = AWORSet(12312,"carralista","AAAAHHHAHAHAHA")
+""" shopping_list = AWORSet(12312,"carralista","AAAAHHHAHAHAHA")
 shopping_list.add("Apples", 50,1)  
 shopping_list.add("Bananas", 10,0)
 
@@ -93,4 +93,4 @@ shopping_list2.add("Bananas", 20,0)
 shopping_list.join(shopping_list2)
 
 print("Current shopping list:")
-shopping_list.lookup()
+shopping_list.lookup() """

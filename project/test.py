@@ -1,13 +1,17 @@
 import json
+import uuid
 if __name__ == '__main__':
     # Create a dictionary to store data for multiple individuals
+    list_id=[]
+    list_id.append(str(uuid.uuid4()))
+    list_id.append(str(uuid.uuid4()))
     data = {
         "john_doe": {
             "name": "John Doe",
             "password": "123456",
             "lists": {
-                "5556": {
-                    "id": "5556",
+                list_id[0]: {
+                    "id": list_id[0],
                     "name":"Compras para amanhã",
                     "owner": "john_doe",
                     "lastUpdate": "2021-03-01 12:00:00",
@@ -24,8 +28,8 @@ if __name__ == '__main__':
                         "bought": False
                     }
                 },
-                "5557": {
-                    "id": "5557",
+                list_id[1]: {
+                    "id": list_id[1],
                     "name": "Compras para hoje",
                     "owner": "john_doe",
                     "lastUpdate": "2021-05-01 12:00:00",
@@ -44,8 +48,8 @@ if __name__ == '__main__':
             "name": "Phill Doe",
             "password": "123456",
             "lists": {
-                "5557": {
-                    "id": "5557",
+                list_id[1]: {
+                    "id": list_id[1],
                     "name": "Compras para hoje",
                     "owner": "jhon_doe",
                     "lastUpdate": "2021-05-01 12:00:00",
@@ -66,16 +70,17 @@ if __name__ == '__main__':
     # Serialize the dictionary to a JSON string
     json_data = json.dumps(data)
     with open("./data/local/users.json", "w") as f:
-        json.dump(json_data, f, indent=4)
+        json.dump(json_data, f, indent=4) 
 
     local_data = data
     
     data = {
-        "5556": {
-            "id": "5556",
+        list_id[0]: {
+            "id": list_id[0],
             "name":"Compras para amanhã",
             "owner": "john_doe",
             "lastUpdate": "2021-03-01 12:00:00",
+            "items":{
             "apples": {
                 "quantity": 10,
                 "bought": False
@@ -88,12 +93,14 @@ if __name__ == '__main__':
                 "quantity": 3,
                 "bought": False
             }
+            }
         },
-        "5557": {
-            "id": "5557",
+        list_id[1]: {
+            "id": list_id[1],
             "name": "Compras para hoje",
             "owner": "john_doe",
             "lastUpdate": "2021-05-01 12:00:00",
+            "items":{
             "water": {
                 "quantity": 15,
                 "bought": True
@@ -102,6 +109,7 @@ if __name__ == '__main__':
                 "quantity": 2,
                 "bought": True
             },
+            }
         }
     }
 

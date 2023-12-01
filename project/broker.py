@@ -63,7 +63,7 @@ def run():
   
     while True:
         # MUDAR ESTE  == QUANDO TIVERMOS SERVERS
-        if len(servers.queue) == 0:
+        if len(servers.queue) != 0:
             poller = poll_both
         else:
             poller = poll_servers
@@ -77,13 +77,23 @@ def run():
                 break
 
             address = frames[0]
+            # VER SE É SUPOSTO MANDAR ISTO SEMPRE
             servers.ready(Server(address))
 
             # Validate control message, or return reply to client
             msg = frames[1:]
+            print("msg:")
+            print(msg)
             if len(msg) == 1:
-                if msg[0] not in (PPP_READY, PPP_HEARTBEAT):
+                if msg[0] ==PING:
+                    backend.send(address, zmq.SNDMORE)
+                    backend.send(b"", zmq.SNDMORE)
+                    backend.send_string("World")
+                elif msg[0] not in (PPP_READY, PPP_HEARTBEAT):
                     print("E: Invalid message from server: %s" % msg)
+                elif msg[0] == PPP_READY:
+                    servers.ready(Server(address))
+                    
             else:
                 frontend.send_multipart(msg)
 
