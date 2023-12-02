@@ -5,6 +5,7 @@ import zmq
 import json
 from AWORSet import AWORSet
 import uuid
+from utils import *
 
 HEARTBEAT_LIVENESS = 3
 HEARTBEAT_INTERVAL = 1
@@ -21,19 +22,50 @@ TIMEOUT=3500 #milliseconds
 
 def read_data():
     with open("./data/cloud/data.json", "r") as f:
-        data = json.load(f)
+        json_data = json.load(f)
 
-    data = json.loads(data)
+    data = json_data
     lists=[]
-
-    for key in data:
-        aworset=AWORSet(data[key]["id"],data[key]["name"],data[key]["owner"])
-        for item in data[key]["items"]:
-            aworset.add(item,data[key]["items"][item]["quantity"],data[key]["items"][item]["bought"])
-        
+    for lst in data:
+        aux=json.loads(lst)
+        aworset=json_to_aworset(aux)
         lists.append(aworset)
     
     return lists
+
+def update_list(aworset):
+    with open("./data/cloud/data.json", "r") as f:
+        json_data = json.load(f)
+        
+    index_to_update = None
+    list_id=aworset.list_id
+    
+    
+    for i, item in enumerate(json_data):
+        aux=json.loads(item)
+        if "list_id" in item and aux["list_id"] == list_id:
+            index_to_update = i
+            break
+    
+    if index_to_update is not None:
+        # Update the data for the specific list
+        json_data[index_to_update]=aworset_to_json(aworset)
+
+        # Write the updated data back to the file
+        with open("./data/cloud/data.json", "w") as f:
+            json.dump(json_data, f, indent=2)
+    else:
+        print(f"List with list_id {list_id} not found.")
+    
+    if index_to_update is not None:
+        # Update the data for the specific list
+        json_data[index_to_update] = aworset_to_json(aworset) 
+    else:
+        # List not found, add the new list
+        json_data.append(aworset_to_json(aworset))
+
+    with open("./data/cloud/data.json", "w") as f:
+        json.dump(json_data, f, indent=2)
 
 
 

@@ -2,22 +2,32 @@ import random
 from PNCounter import PNCounter
 import sys
 class Item:
-    def __init__(self, name, quantity, bought_status):
+    def __init__(self, name, quantity,status):
         self.name = name
         self.quantity = PNCounter(quantity)
-        self.bought_status = PNCounter(bought_status) # 0 = not bought, 1 = bought
+        self.bought_status = PNCounter(status) # 0 = not bought, 1 = bought
+    
+    def inc_quantity_negative_counter(self,quantity):
+        self.quantity.decrement(quantity)
         
+    def inc_bought_status_negative_counter(self,status):
+        self.bought_status.decrement(status)
               
 class AWORSet:
-    def __init__(self,list_id, list_name, user_id):
+    def __init__(self,list_id, list_name, user_id,counter=1):
         self.list_id=list_id
         self.list_name=list_name
         self.owner=user_id
-        self.cCounter=1
+        self.cCounter=counter
         self.context=set()
         self.items = dict()
 
-    def add(self,item_name,quantity,bought_status):
+    
+    def add_existing(self,item_key,quantity,bought_status):
+        self.items[item_key]=Item(item_key[0],quantity,bought_status)
+        
+
+    def add_new(self,item_name,quantity,bought_status):
         item = Item(item_name,quantity,bought_status)
         self.context.add((item_name,self.cCounter))
         self.items[(item_name,self.cCounter)]=item
@@ -63,8 +73,19 @@ class AWORSet:
                 self.items[key].bought_status.update_status(status)
                 return
     
-
+    def all_info(self):
+        print("List ID:", self.list_id)
+        print("List Name:", self.list_name)
+        print("Owner:", self.owner)
+        print("Counter:", self.cCounter)
+        print("\nContext:")
+        for context_item in self.context:
+            print(context_item)
+        self.lookup()
+        
+        
     def lookup(self):
+        print("Items:")
         for key in self.items:
             status=self.items[key].bought_status.lookup()
             text = "not bought" if status == 0 else "bought"

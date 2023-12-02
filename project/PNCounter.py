@@ -28,6 +28,8 @@ class PNCounter:
         self.negative_counter.merge(other.negative_counter)
         
     def lookup(self):
+        #print("Positive Counter:",self.positive_counter.gn_counter)
+        #print("Negative Counter:",self.negative_counter.gn_counter)
         return self.positive_counter.gn_counter - self.negative_counter.gn_counter
     
     
