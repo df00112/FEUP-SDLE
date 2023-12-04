@@ -2,6 +2,7 @@ import zmq
 import json
 import datetime
 import pytz
+from utils import *
 
 PROXYLIST=["tcp://127.0.0.1:5555","tcp://127.0.0.1:5557"]
 MAX_RETRIES=3
@@ -70,37 +71,37 @@ def auth():
             print("Authentication failed")
 
 
-def display_list(lst):
+def display_list(aworset):
     print("\n=====================================")
-    print(f"Shopping list: {lst['name']}")
-    print("Items:")
-    for item in lst:
-        if item != "name" and item != "lastUpdate":
-            print(f"{item}: {lst[item]['quantity']} {'(bought)' if lst[item]['bought'] == True else ''}")
+    print(f"Shopping list: {aworset.list_name}")
+    aworset.lookup()
     print("=====================================\n")
 
 def edit_list(lst):
+    
+    aworset=json_to_aworset(lst)
+    
     while True:
         # display the items
-        display_list(lst)
+        display_list(aworset)
 
-        action=input("Enter an action (Add/Update/Remove/Status/Quit): ").lower()
+        action=input("Enter an action (Add/Update/Remove/Quit): ").lower()
 
         if action == "add":
             item=input("Enter a new item to add: ")
-            while item in lst:
+            while item in aworset.get_items_names():
                 print("Item already exists")
                 item=input("Enter a new item to add: ")
             quantity=input("Enter the quantity: ")
             while not quantity.isnumeric():
                 print("Invalid quantity")
                 quantity=input("Enter the quantity: ")
-            lst[item]={"quantity": int(quantity), "bought": False}
+            aworset.add_new(item,int(quantity),0)
             print("Item added")
             
         elif action == "update":
             item=input("Enter an item to update: ")
-            while item not in lst:
+            while item not in aworset.get_items_names():
                 print("Item doens't exists")
                 item=input("Enter a item to update: ")
                 
@@ -113,52 +114,44 @@ def edit_list(lst):
             while bought != "bought" and bought != "not bought":
                 print("Invalid status")
                 bought=input("Enter the status (bought/not bought): ").lower()
-            lst[item]={"quantity": int(quantity), "bought": True if bought == "bought" else False}
+            
+            bought= 0 if bought == "not bought" else 1
+            aworset.update_item_quantity(item,int(quantity))
+            aworset.update_item_status(item,bought)
             
             print("Item updated")
         
         elif action == "remove":
             item=input("Enter an item to remove: ")
-            while item not in lst:
+            while item not in aworset.get_items_names():
                 print("Item doens't exists")
                 item=input("Enter a item to remove: ")
-            del lst[item]
+            aworset.remove(item)
             print("Item removed")
-            
-        elif action == "status":
-            item=input("Enter an item to check the status: ")
-            while item not in lst:
-                print("Item doens't exists")
-                item=input("Enter a item to check the status: ")
-            bought=input("Enter the status (bought/not bought): ").lower()
-            while bought != "bought" and bought != "not bought":
-                print("Invalid status")
-                bought=input("Enter the status (bought/not bought): ").lower()
-                
-            # update the bought field
-            lst[item]["bought"] = True if bought == "bought" else False
-            
-            print("The status was updated")
             
         elif action == "quit":
             break
         else:
             print("Invalid action")
     
-    #update timestamp
-    lst["lastUpdate"] = datetime.datetime.now(pytz.timezone("Europe/Lisbon")).strftime("%Y-%m-%d %H:%M:%S")  
-    
-    return lst
+
+    return aworset_to_json(aworset)
 
 def save_locally(list_id, listToBeSaved):
     global username
     global data
+    
+    with open("./data/local/users.json", "r") as f:
+        data = json.load(f)
+
+    data = json.loads(data)
+    
     # save the list locally
     data[username]["lists"][list_id] = listToBeSaved
 
     json_data = json.dumps(data)
     with open("./data/local/users.json", "w") as f:
-        json.dump(json_data, f, indent=4)
+        json.dump(json_data, f, indent=2)
 
 def offline():
     global username
@@ -166,11 +159,20 @@ def offline():
   
     # display the shopping lists
     print("\n=====================================")
+    print(data[username]['name'])
     list_keys = list(data[username]["lists"].keys())
     print(f"Shopping lists: {list_keys}")
     print("Shopping lists:")
     for list_id in data[username]["lists"]:
-        print(f"{list_id}: {data[username]['lists'][list_id]['name']} (Last Update: {data[username]['lists'][list_id]['lastUpdate']})")
+        #print(data[username]['lists'][list_id])
+        list_info  = json.loads(data[username]['lists'][list_id])
+
+        list_name = list_info ['list_name']
+        print(list_name)
+        #print(f"{list_id}: {data[username]['lists'][list_id]['list_name']} ")
+        #print(f"{list_id}: {list_name} ")
+        #print(f"{list_id}: {data[username]['lists'][list_id]['list_name']} ")
+        #print(f"{list_id}: {data[username]['lists'][list_id]['list_name']} ")
 
     while True:
         # ask for the list to edit
@@ -179,7 +181,8 @@ def offline():
         # check if the list exists
         if list_id in data[username]["lists"]:
             print("List found")
-            lst=edit_list(data[username]["lists"][list_id])
+            list_info  = json.loads(data[username]['lists'][list_id])
+            lst=edit_list(list_info)
             
             print("Saving changes...")
             save_locally(list_id,lst)
@@ -236,10 +239,11 @@ if __name__ == "__main__":
         data = json.load(f)
 
     data = json.loads(data)
-
+    username="john_doe"
     # local
-    auth()
-
+    #auth()
+    offline()
+    exit()
     # stabilish connection with the server
     if(connectToProxy()):
         print("Connected to a proxy")

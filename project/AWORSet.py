@@ -82,7 +82,12 @@ class AWORSet:
         for context_item in self.context:
             print(context_item)
         self.lookup()
-        
+    
+    def get_items_names(self):
+        items_names=[]
+        for key in self.items:
+            items_names.append(key[0])
+        return items_names
         
     def lookup(self):
         print("Items:")
