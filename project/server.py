@@ -149,7 +149,10 @@ def list_request(msg):
 
 def list_update(msg):
     global data
-    aworset=json_to_aworset(msg[2])
+    print("IN LIST UPDATE")
+    print("MSG: ",msg)
+    lst=json.loads(msg[1])
+    aworset=json_to_aworset(lst)
     temp=None
     for awor in data:
         if awor.list_id==aworset.list_id:
@@ -163,19 +166,20 @@ def list_update(msg):
 def list_delete(msg):
     global data
     # msg = [LIST_DELETE, list_id, userID]
-    list_id=msg[1] # testar
-    user=msg[2] # testar
-
+    print("IN LIST DELETE")
+    print("MSG: ",msg)
+    list_id=msg[2].decode('utf-8') # testar
+    user=msg[1].decode('utf-8') # testar
+    print("LIST ID: ",list_id)
+    print("USER: ",user)
     for awor in data:
         if awor.list_id==list_id:
             if awor.owner!=user:
                 return [LIST_DELETE_DENIED, "denied"]
             else:
                 data.remove(awor)
-                return [LIST_DELETE_RESPONSE,"deleted"]
     
-    return # Testar em baixo depois
-    
+      
         
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
@@ -184,7 +188,7 @@ def list_delete(msg):
     
     for i, item in enumerate(json_data):
         aux=json.loads(item)
-        if "list_id" in item and aux["list_id"] == aworset.list_id:
+        if "list_id" in item and aux["list_id"] == list_id:
             index_to_delete = i
             break
     
@@ -195,13 +199,16 @@ def list_delete(msg):
         # Write the updated data back to the file
         with open("./data/cloud/data.json", "w") as f:
             json.dump(json_data, f, indent=2)
-        return [LIST_DELETE_RESPONSE]
+        return [LIST_DELETE_RESPONSE,"deleted"]
    
 def list_create(msg):
     global data
-    aworset=json_to_aworset(msg[1])
+    message=json.loads(msg[1])
+    aworset=json_to_aworset(message)
     data.append(aworset)
     create_list_database(aworset)
+    for awor in data:
+        print("LIST ID: ",awor.list_id)
     return [LIST_CREATE_RESPONSE,"created"]
 
 def handle_request(msg):
@@ -242,18 +249,19 @@ def run():
             #  - 3-part envelope + content -> request
             #  - 1-part HEARTBEAT -> heartbeat
             frames = server.recv_multipart()
-            print(f"Received message: {frames}")
+            #print(f"Received message: {frames}")
             if not frames:
                 break # Interrupted
-
-            if len(frames) == 4:
+            #print("Frame size: ",len(frames))
+            if (len(frames) == 4) or (len(frames) == 5):
                 print("Frames: ",frames)
                 response=handle_request(frames[2:])
+                print("Response: ",response)
                 server.send(frames[0],zmq.SNDMORE)
                 server.send(response[0],zmq.SNDMORE)
                 server.send_string(response[1])
             elif len(frames) == 1 and frames[0] == PPP_HEARTBEAT:
-                print("I: Queue heartbeat")
+                #print("I: Queue heartbeat")
                 liveness = HEARTBEAT_LIVENESS
             else:
                 print("E: Invalid message: %s" % frames)
@@ -274,7 +282,7 @@ def run():
                 liveness = HEARTBEAT_LIVENESS
         if time.time() > heartbeat_at:
             heartbeat_at = time.time() + HEARTBEAT_INTERVAL
-            print("I: server heartbeat")
+            #print("I: server heartbeat")
             server.send(PPP_HEARTBEAT)
         
 

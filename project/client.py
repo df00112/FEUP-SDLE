@@ -71,7 +71,7 @@ def check_response(message_type):
         return True
     elif message_type==LIST_DELETE_DENIED:
         print("Not owner of the list")
-        return False
+        return True
     elif message_type==LIST_CREATE_RESPONSE:
         print("List created")
         return True
@@ -82,6 +82,7 @@ def check_response(message_type):
 def send_message(action, message):
     global client
     global username
+    global used_proxy
     print("MESSAGE: ",message)
     if connectToProxy()==False:
         return None
@@ -94,7 +95,6 @@ def send_message(action, message):
             if action==LIST_DELETE:
                 client.send_string(username,zmq.SNDMORE)
             client.send_string(message)
-            print("message sent: ",message)
             poller = zmq.Poller()
             poller.register(client, zmq.POLLIN)
 
@@ -104,14 +104,17 @@ def send_message(action, message):
                 print("hAHAHAHAH")
                 # Receive reply from server
                 message = client.recv_multipart()
-                print("message received: ",message)
                 response=check_response(message[0])
+                print("message:",message[1])
                 if response==False:
                     return "list not found"
-                return message[1]
+                return message[1].decode("utf-8")
             else:
                 print("Retrying to send message")
-                amountOfRetries += 1       
+                amountOfRetries += 1    
+                client.close()
+                client= context.socket(zmq.REQ)
+                client.connect(used_proxy)   
     except KeyboardInterrupt:
         return None
 
@@ -254,6 +257,7 @@ def offline():
 def connectToProxy():
     global context
     global client
+    global used_proxy
     poller = zmq.Poller()
     for proxy in PROXYLIST:
         print(f"Trying to connect to {proxy}")
@@ -276,6 +280,7 @@ def connectToProxy():
                     message = client.recv_multipart()
                     message = message[0].decode("utf-8")
                     print(f"Received reply: {message}")
+                    used_proxy=proxy
                     return True
                 else:
                     print("Retrying to connect to the proxy")
@@ -320,9 +325,15 @@ def delete_list():
         return
     
     response=send_message(LIST_DELETE,list_id)
-    while response=="list not found":
-        response=send_message(LIST_DELETE,list_id)
-    
+    try:
+        while response!="deleted":
+            print("Response:",response)
+            if(response=="denied"):
+                print("You are not the owner of the list")
+                return
+            response=send_message(LIST_DELETE,list_id)
+    except KeyboardInterrupt:
+        return    
     print("Deleting list locally...")
     
     with open("./data/local/users.json", "r") as f:
@@ -340,14 +351,15 @@ def create_list():
     global client
     
     list_name=input("Enter list name: ")
-    list_id=uuid.uuid4()
-    aworset=AWORSet(list_name,list_id,username)
+    list_id=str(uuid.uuid4())
+    print("List id:",list_id)
+    aworset=AWORSet(list_id,list_name,username)
     edit_list(aworset)
     print("Saving changes...")
     save_locally(list_id,aworset_to_json(aworset))
     print("Changes saved locally. Sending changes to the server...")
     response=send_message(LIST_CREATE,aworset_to_json(aworset))
-    if response!="list created":
+    if response!="created":
         print("Error creating list, try again at a later time")
         
     
@@ -385,6 +397,7 @@ if __name__ == "__main__":
     username = None
     context = zmq.Context()
     client = context.socket(zmq.REQ)
+    used_proxy = None
     # open the json file
     with open("./data/local/users.json", "r") as f:
         data = json.load(f)
