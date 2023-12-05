@@ -20,6 +20,17 @@ PROXYLIST=["tcp://127.0.0.1:5556","tcp://127.0.0.1:5558"]
 MAX_RETRIES=3
 TIMEOUT=3500 #milliseconds
 
+LIST_REQUEST=b"\x03" # Client sends this to broker to request a list
+LIST_RESPONSE=b"\x04" # Broker sends this to client with the list
+LIST_UPDATE=b"\x05" # Client sends this to broker to update the list
+LIST_UPDATE_RESPONSE=b"\x06" # Broker sends this to client with the update status
+LIST_DELETE=b"\x07" # Client sends this to broker to delete a list
+LIST_DELETE_RESPONSE=b"\x08" # Broker sends this to client with the delete status
+LIST_CREATE=b"\x09" # Client sends this to broker to create a list
+LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
+LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
+LIST_RESPONSE_NOT_FOUND=b"\x12" # Broker sends this to client when the list is not found
+
 def read_data():
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
@@ -33,7 +44,7 @@ def read_data():
     
     return lists
 
-def update_list(aworset):
+def update_database(aworset):
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
         
@@ -110,6 +121,80 @@ def server_socket(context, poller):
     print("Max retries reached. Exiting...")
     return None
 
+def list_request(msg):
+    global data
+    print("IN LIST REQUEST")
+    print(msg[1])
+    list_id=msg[1].decode("utf-8")
+    print(list_id)
+    for aworset in data:
+        if aworset.list_id==list_id:
+            return [LIST_RESPONSE,aworset_to_json(aworset)]
+    return [LIST_RESPONSE_NOT_FOUND,"not found"]
+
+
+def list_update(msg):
+    global data
+    aworset=json_to_aworset(msg[2])
+    temp=None
+    for awor in data:
+        if awor.list_id==aworset.list_id:
+            awor.join(aworset)
+            temp=awor
+            break
+        
+    update_database(temp)
+    return [LIST_UPDATE_RESPONSE,"updated"]
+
+def list_delete(msg):
+    global data
+    aworset=json_to_aworset(msg[1]) # testar
+    user=msg[2] # testar
+    
+    if aworset.owner!=user:
+        return [LIST_DELETE_DENIED]
+    
+    for awor in data:
+        if awor.list_id==aworset.list_id:
+            data.remove(awor)
+            return [LIST_DELETE_RESPONSE,"deleted"]
+    
+    return # Testar em baixo depois
+    
+        
+    with open("./data/cloud/data.json", "r") as f:
+        json_data = json.load(f)
+        
+    index_to_delete = None
+    
+    for i, item in enumerate(json_data):
+        aux=json.loads(item)
+        if "list_id" in item and aux["list_id"] == aworset.list_id:
+            index_to_delete = i
+            break
+    
+    if index_to_delete is not None:
+        # Delete the list
+        del json_data[index_to_delete]
+
+        # Write the updated data back to the file
+        with open("./data/cloud/data.json", "w") as f:
+            json.dump(json_data, f, indent=2)
+        return [LIST_DELETE_RESPONSE]
+   
+
+
+def handle_request(msg):
+    request_type=msg[0]
+    print(f"Request type: {request_type}")
+    if request_type == LIST_REQUEST:
+        print("IN LIST REQUEST")
+        return list_request(msg)
+    elif request_type == LIST_UPDATE:
+        return list_update(msg)
+    elif request_type == LIST_DELETE:
+        return list_delete(msg)
+
 
 
 def run():
@@ -135,22 +220,16 @@ def run():
             #  - 3-part envelope + content -> request
             #  - 1-part HEARTBEAT -> heartbeat
             frames = server.recv_multipart()
+            print(f"Received message: {frames}")
             if not frames:
                 break # Interrupted
 
-            if len(frames) == 3:
-                # Simulate various problems, after a few cycles
-                cycles += 1
-                if cycles > 3 and randint(0, 5) == 0:
-                    print("I: Simulating a crash")
-                    break
-                if cycles > 3 and randint(0, 5) == 0:
-                    print("I: Simulating CPU overload")
-                    time.sleep(3)
-                print("I: Normal reply")
-                server.send_multipart(frames)
-                liveness = HEARTBEAT_LIVENESS
-                time.sleep(1)  # Do some heavy work
+            if len(frames) == 4:
+                print("Frames: ",frames)
+                response=handle_request(frames[2:])
+                server.send(frames[0],zmq.SNDMORE)
+                server.send(response[0],zmq.SNDMORE)
+                server.send_string(response[1])
             elif len(frames) == 1 and frames[0] == PPP_HEARTBEAT:
                 print("I: Queue heartbeat")
                 liveness = HEARTBEAT_LIVENESS

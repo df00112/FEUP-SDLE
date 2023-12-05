@@ -14,6 +14,15 @@ PROXYLIST=[["tcp://*:5555","tcp://*:5556"],["tcp://*:5557","tcp://*:5558"]]
 # 00 and 10 for frontend and 01 and 11 for backend
 
 PING = b"ping" # Client sends this to broker to check if it is alive
+LIST_REQUEST=b"\x03" # Client sends this to broker to request a list
+LIST_RESPONSE=b"\x04" # Broker sends this to client with the list
+LIST_UPDATE=b"\x05" # Client sends this to broker to update the list
+LIST_UPDATE_RESPONSE=b"\x06" # Broker sends this to client with the update status
+LIST_DELETE=b"\x07" # Client sends this to broker to delete a list
+LIST_DELETE_RESPONSE=b"\x08" # Broker sends this to client with the delete status
+LIST_CREATE=b"\x09" # Client sends this to broker to create a list
+LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
+LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
 
 HEARTBEAT_LIVENESS = 3     # 3..5 is reasonable
 HEARTBEAT_INTERVAL = 1.0   # Seconds
@@ -52,6 +61,21 @@ class ServerQueue(object):
         address, server = self.queue.popitem(False)
         return address
 
+def check_request(request):
+    
+    if(request[0] == PING):
+        return [True, request]
+    elif(request[0] == LIST_REQUEST):
+        return [LIST_REQUEST, request]
+    elif(request[0] == LIST_UPDATE):
+        return [LIST_UPDATE, request]
+    elif(request[0] == LIST_DELETE):
+        return [LIST_DELETE, request]
+    elif(request[0] == LIST_CREATE):
+        return [LIST_CREATE, request]
+    return [False,False]
+
+
 
 def run():
     global servers
@@ -75,7 +99,7 @@ def run():
             frames = backend.recv_multipart()
             if not frames:
                 break
-
+            print("frames:",frames)
             address = frames[0]
             # VER SE É SUPOSTO MANDAR ISTO SEMPRE
             servers.ready(Server(address))
@@ -85,16 +109,18 @@ def run():
             print("msg:")
             print(msg)
             if len(msg) == 1:
-                if msg[0] ==PING:
-                    backend.send(address, zmq.SNDMORE)
-                    backend.send(b"", zmq.SNDMORE)
-                    backend.send_string("World")
-                elif msg[0] not in (PPP_READY, PPP_HEARTBEAT):
+                if msg[0] not in (PPP_READY, PPP_HEARTBEAT):
                     print("E: Invalid message from server: %s" % msg)
                 elif msg[0] == PPP_READY:
                     servers.ready(Server(address))
                     
             else:
+                address=msg[0]
+                msg=msg[1:]
+                print("NEW ADDRESS: ",address)
+                print("NEW MSG: ",msg)
+                frontend.send(address, zmq.SNDMORE)
+                frontend.send(b"", zmq.SNDMORE)
                 frontend.send_multipart(msg)
 
             # Send heartbeats to idle servers if it's time
@@ -103,33 +129,38 @@ def run():
                     msg = [server, PPP_HEARTBEAT]
                     backend.send_multipart(msg)
                 heartbeat_at = time.time() + HEARTBEAT_INTERVAL
+            
+            """ backend.send(address, zmq.SNDMORE)
+            backend.send(b"", zmq.SNDMORE)
+            backend.send_string(LIST_REQUEST, zmq.SNDMORE)
+            backend.send_string("Hello") """
         if socks.get(frontend) == zmq.POLLIN:
             frames = frontend.recv_multipart()
             if not frames:
                 break
-            print("frames:")
-            print(frames)
             address = frames[0]
             msg = frames[2:]
+            """ 
+            print("frames:")
+            print(frames)
             print("address:")
             print(address)
             print("msg:")
             print(msg)
-            if(msg[0] == PING):
-                print("PING RECEIVED")
-                try:
-                    frontend.send(address, zmq.SNDMORE)
-                    frontend.send(b"", zmq.SNDMORE)
-                    frontend.send_string("World")
-                    
-                except zmq.error.Again:
-                    print("Timeout")
-                    break
-                print("PING SENT")
+            """
+            request=check_request(msg)
+            if(request[0]==False):
+                print("E: Invalid message from client: %s" % msg)
                 continue
+            elif request[0] == True:
+                frontend.send(address, zmq.SNDMORE)
+                frontend.send(b"", zmq.SNDMORE)
+                frontend.send_string("alive")
+            else:
+                frames.insert(0, servers.next())
+                backend.send_multipart(frames)
+                
             
-            #frames.insert(0, servers.next())
-            #backend.send_multipart(frames)
 
 
         servers.purge()
