@@ -1,6 +1,6 @@
 from random import randint
 import time
-
+import sys
 import zmq
 import json
 from AWORSet import AWORSet
@@ -31,6 +31,9 @@ LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create statu
 LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
 LIST_RESPONSE_NOT_FOUND=b"\x12" # Broker sends this to client when the list is not found
 
+PUB_LIST = ["tcp://*:6000", "tcp://*:6001", "tcp://*:6002"]
+SUB_LIST = ["tcp://localhost:6000", "tcp://localhost:6001", "tcp://localhost:6002"]
+
 def read_data():
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
@@ -51,7 +54,6 @@ def update_database(aworset):
     index_to_update = None
     list_id=aworset.list_id
     
-    
     for i, item in enumerate(json_data):
         aux=json.loads(item)
         if "list_id" in item and aux["list_id"] == list_id:
@@ -60,25 +62,31 @@ def update_database(aworset):
     
     if index_to_update is not None:
         # Update the data for the specific list
-        json_data[index_to_update]=aworset_to_json(aworset)
-
-        # Write the updated data back to the file
+        json_data[index_to_update] = aworset_to_json(aworset)
         with open("./data/cloud/data.json", "w") as f:
             json.dump(json_data, f, indent=2)
     else:
-        print(f"List with list_id {list_id} not found.")
+        # The list does not exist in the database
+        # remove it from the server
+        data.remove(aworset)
+
+def create_list_database(aworset):
+    with open("./data/cloud/data.json", "r") as f:
+        json_data = json.load(f)
+        
+    index_to_update = None
+    list_id=aworset.list_id
     
-    if index_to_update is not None:
-        # Update the data for the specific list
-        json_data[index_to_update] = aworset_to_json(aworset) 
-    else:
-        # List not found, add the new list
+    for i, item in enumerate(json_data):
+        aux=json.loads(item)
+        if "list_id" in item and aux["list_id"] == list_id:
+            index_to_update = i
+            break
+    
+    if index_to_update is None:
         json_data.append(aworset_to_json(aworset))
-
-    with open("./data/cloud/data.json", "w") as f:
-        json.dump(json_data, f, indent=2)
-
-
+        with open("./data/cloud/data.json", "w") as f:
+            json.dump(json_data, f, indent=2)
 
 def server_socket(context, poller):
     """Helper function that returns a new configured socket
@@ -121,6 +129,12 @@ def server_socket(context, poller):
     print("Max retries reached. Exiting...")
     return None
 
+def send_to_all(msg):
+    global sub_sockets
+    for sub_socket in sub_sockets:
+        print("Sending to socket")
+        print(msg)
+
 def list_request(msg):
     global data
     print("IN LIST REQUEST")
@@ -148,16 +162,17 @@ def list_update(msg):
 
 def list_delete(msg):
     global data
-    aworset=json_to_aworset(msg[1]) # testar
+    # msg = [LIST_DELETE, list_id, userID]
+    list_id=msg[1] # testar
     user=msg[2] # testar
-    
-    if aworset.owner!=user:
-        return [LIST_DELETE_DENIED]
-    
+
     for awor in data:
-        if awor.list_id==aworset.list_id:
-            data.remove(awor)
-            return [LIST_DELETE_RESPONSE,"deleted"]
+        if awor.list_id==list_id:
+            if awor.owner!=user:
+                return [LIST_DELETE_DENIED, "denied"]
+            else:
+                data.remove(awor)
+                return [LIST_DELETE_RESPONSE,"deleted"]
     
     return # Testar em baixo depois
     
@@ -182,7 +197,12 @@ def list_delete(msg):
             json.dump(json_data, f, indent=2)
         return [LIST_DELETE_RESPONSE]
    
-
+def list_create(msg):
+    global data
+    aworset=json_to_aworset(msg[1])
+    data.append(aworset)
+    create_list_database(aworset)
+    return [LIST_CREATE_RESPONSE,"created"]
 
 def handle_request(msg):
     request_type=msg[0]
@@ -194,8 +214,10 @@ def handle_request(msg):
         return list_update(msg)
     elif request_type == LIST_DELETE:
         return list_delete(msg)
-
-
+    elif request_type == LIST_CREATE:
+        return list_create(msg) 
+    else:
+        return [None, None]
 
 def run():
     global liveness
@@ -257,9 +279,32 @@ def run():
         
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2 or sys.argv[1] not in ["0","1"]:
+        print("Usage: python3 broker.py <argument>")
+        sys.exit(1)
+
+    arg_value = int(sys.argv[1])
+
     data=read_data()
     
     context = zmq.Context(1)
+
+    pub_context = zmq.Context(1)
+    pub_socket = pub_context.socket(zmq.PUB)
+    print("PUB: %s" % PUB_LIST[arg_value])
+    pub_socket.bind(PUB_LIST[arg_value])
+
+    sub_sockets = []
+    for i in range(len(PUB_LIST)):
+        if i == arg_value:
+            continue
+        else:
+            sub_context = zmq.Context(1)
+            sub_socket = sub_context.socket(zmq.SUB)
+            sub_socket.connect(SUB_LIST[i])
+            sub_socket.setsockopt(zmq.SUBSCRIBE, b"")
+            sub_sockets.append(sub_socket)
+
     liveness = HEARTBEAT_LIVENESS
     interval = INTERVAL_INIT
     heartbeat_at = time.time() + HEARTBEAT_INTERVAL
