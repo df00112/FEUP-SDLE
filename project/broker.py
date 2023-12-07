@@ -23,9 +23,13 @@ LIST_DELETE_RESPONSE=b"\x08" # Broker sends this to client with the delete statu
 LIST_CREATE=b"\x09" # Client sends this to broker to create a list
 LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
 LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
+LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to broker to update a list in offline mode
+
+REREAD_DATABASE=b"\x12" # Broker sends this to server to request a database reread
 
 HEARTBEAT_LIVENESS = 3     # 3..5 is reasonable
 HEARTBEAT_INTERVAL = 1.0   # Seconds
+ONE_MINUTE_INTERVAL = 60  # in seconds
 
 #  Paranoid Pirate Protocol constants
 PPP_READY = b"\x01"      # Signals server is ready
@@ -69,6 +73,8 @@ def check_request(request):
         return [LIST_REQUEST, request]
     elif(request[0] == LIST_UPDATE):
         return [LIST_UPDATE, request]
+    elif(request[0] == LIST_UPDATE_OFFLINE):
+        return [LIST_UPDATE_OFFLINE, request]
     elif(request[0] == LIST_DELETE):
         return [LIST_DELETE, request]
     elif(request[0] == LIST_CREATE):
@@ -84,7 +90,7 @@ def run():
     global heartbeat_at
     global frontend
     global backend
-  
+    global one_minute_at
     while True:
         # MUDAR ESTE  == QUANDO TIVERMOS SERVERS
         if len(servers.queue) != 0:
@@ -133,6 +139,13 @@ def run():
                     backend.send_multipart(msg)
                 heartbeat_at = time.time() + HEARTBEAT_INTERVAL
             
+            if time.time() >= one_minute_at:
+                for server in servers.queue:
+                    msg = [server, REREAD_DATABASE]
+                    backend.send_multipart(msg)
+                one_minute_at = time.time() + ONE_MINUTE_INTERVAL
+            
+            
             """ backend.send(address, zmq.SNDMORE)
             backend.send(b"", zmq.SNDMORE)
             backend.send_string(LIST_REQUEST, zmq.SNDMORE)
@@ -143,14 +156,6 @@ def run():
                 break
             address = frames[0]
             msg = frames[2:]
-            """ 
-            print("frames:")
-            print(frames)
-            print("address:")
-            print(address)
-            print("msg:")
-            print(msg)
-            """
             request=check_request(msg)
             if(request[0]==False):
                 print("E: Invalid message from client: %s" % msg)
@@ -197,5 +202,5 @@ if __name__ == "__main__":
     servers = ServerQueue()
 
     heartbeat_at = time.time() + HEARTBEAT_INTERVAL
-
+    one_minute_at = time.time() + ONE_MINUTE_INTERVAL
     run()

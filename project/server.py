@@ -31,6 +31,8 @@ LIST_CREATE=b"\x09" # Client sends this to broker to create a list
 LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
 LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
 LIST_RESPONSE_NOT_FOUND=b"\x12" # Broker sends this to client when the list is not found
+REREAD_DATABASE=b"\x12"
+LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to broker to update a list in offline mode
 
 PUB_LIST = ["tcp://*:6000", "tcp://*:6001", "tcp://*:6002"]
 SUB_LIST = ["tcp://localhost:6000", "tcp://localhost:6001", "tcp://localhost:6002"]
@@ -118,11 +120,12 @@ def read_data():
     
     return lists
 
-def update_database(aworset):
+def update_database(aworset,offlineMode=False):
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
         
     index_to_update = None
+    aworset.lookup()
     list_id=aworset.list_id
     
     for i, item in enumerate(json_data):
@@ -137,9 +140,14 @@ def update_database(aworset):
         with open("./data/cloud/data.json", "w") as f:
             json.dump(json_data, f, indent=2)
     else:
-        # The list does not exist in the database
-        # remove it from the server
-        data.remove(aworset)
+        print("OFFLINE MODE: ",offlineMode)
+        if not offlineMode:
+            # The list does not exist in the database
+            # remove it from the server
+            data.remove(aworset)
+        else:
+            data.append(aworset)
+            create_list_database(aworset)
 
 def create_list_database(aworset):
     with open("./data/cloud/data.json", "r") as f:
@@ -228,7 +236,13 @@ def list_update(msg):
                 awor.join(aworset)
                 temp=awor
                 break
-    update_database(temp)
+            
+    # That means that its from the offline mode
+    if temp is None:
+        temp=aworset
+    offlineMode=False if msg[0]==LIST_UPDATE else True 
+           
+    update_database(temp,offlineMode)
     pub_socket.send(LIST_UPDATE,zmq.SNDMORE)
     pub_socket.send_string(aworset_to_json(aworset))
 
@@ -300,7 +314,7 @@ def handle_request(msg):
     if request_type == LIST_REQUEST:
         print("IN LIST REQUEST")
         return list_request(msg)
-    elif request_type == LIST_UPDATE:
+    elif request_type == LIST_UPDATE or request_type == LIST_UPDATE_OFFLINE:
         return list_update(msg)
     elif request_type == LIST_DELETE:
         return list_delete(msg)
@@ -343,9 +357,15 @@ def run():
                 server.send(frames[0],zmq.SNDMORE)
                 server.send(response[0],zmq.SNDMORE)
                 server.send_string(response[1])
-            elif len(frames) == 1 and frames[0] == PPP_HEARTBEAT:
-                #print("I: Queue heartbeat")
-                liveness = HEARTBEAT_LIVENESS
+            elif len(frames) == 1 :
+                if frames[0] == PPP_HEARTBEAT:
+                    #print("I: Queue heartbeat")
+                    liveness = HEARTBEAT_LIVENESS
+                elif frames[0]== REREAD_DATABASE:
+                    print("REREAD DATABASE")
+                    data=read_data()
+                    print("DATA: ",data)
+                    print("DATA LEN: ",len(data))
             else:
                 print("E: Invalid message: %s" % frames)
             interval = INTERVAL_INIT

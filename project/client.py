@@ -17,7 +17,7 @@ LIST_DELETE_RESPONSE=b"\x08" # Broker sends this to client with the delete statu
 LIST_CREATE=b"\x09" # Client sends this to broker to create a list
 LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
 LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
-
+LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to broker to update the list when offline
 """
 def receive_messages():
     while True:
@@ -219,10 +219,11 @@ def save_locally(list_id, listToBeSaved):
     with open("./data/local/users.json", "w") as f:
         json.dump(json_data, f, indent=2)
 
-def offline():
+
+def offline_edit():
     global username
     global data
-  
+    
     # display the shopping lists
     print("\n=====================================")
     print(data[username]['name'])
@@ -244,14 +245,68 @@ def offline():
             print("List found")
             list_info  = json.loads(data[username]['lists'][list_id])
             aworset=json_to_aworset(list_info)
-            lst=edit_list(aworset)
+            edit_list(aworset)
             
             print("Saving changes...")
-            save_locally(list_id,lst)
+            save_locally(list_id,aworset_to_json(aworset))
             print("Changes saved")
-            print("Do you want to send the changes to the server? (y/n)")
+            inp=("Do you want to send the changes to the server? (y/n)")
+            while inp != "y" and inp != "n":
+                inp=input("Do you want to send the changes to the server? (y/n)").lower()
+            
+            if inp=="y":
+                print("Sending changes to the server...")
+                response=send_message(LIST_UPDATE_OFFLINE,aworset_to_json(aworset))
+                while response!="updated":
+                    print("Response:",response)
+                    response=send_message(LIST_UPDATE_OFFLINE,aworset_to_json(aworset))
+                
             
             break
+
+
+def offline_create():
+    global username
+    global data
+    
+    list_name=input("Enter list name: ")
+    list_id=str(uuid.uuid4())
+    print("List name:",list_name,"\nList id:",list_id)
+    aworset=AWORSet(list_id,list_name,username)
+    edit_list(aworset)
+    print("Saving changes...")
+    save_locally(list_id,aworset_to_json(aworset))
+    
+    
+    inp=("Do you want to send the changes to the server? (y/n)")
+    while inp != "y" and inp != "n":
+        inp=input("Do you want to send the changes to the server? (y/n)").lower()
+    
+    if inp=="y":
+        print("Sending changes to the server...")
+        response=send_message(LIST_CREATE,aworset_to_json(aworset))
+        if response!="created":
+            print("Error sending list, try again at a later time")
+        
+
+
+def offline():
+    global username
+    global data
+  
+    inp=input("Select an action: (create/edit) list or (quit): ").lower()
+    
+    while inp!="quit" or inp!="create" or inp!="edit":
+        if inp=="quit":
+            break
+        elif inp=="create":
+            offline_create()
+        elif inp=="edit":
+            offline_edit()
+        else:
+            print("Invalid action")
+        inp=input("Select an action: (create/edit) list or (quit): ").lower()
+    
 
 
 def connectToProxy():
@@ -386,9 +441,22 @@ def list_edit():
     print("Saving changes...")
     save_locally(list_id,aworset_to_json(aworset))
     print("Changes saved locally. Sending changes to the server...")
-    send_message(LIST_UPDATE,aworset_to_json(aworset))
+    response=send_message(LIST_UPDATE,aworset_to_json(aworset))
+    while response!="updated":
+        print("Response:",response)
+        response=send_message(LIST_UPDATE,aworset_to_json(aworset))
 
-    
+def initial_interface():
+    inp=input("Connect to server or use offline mode? (online/offline): ").lower()
+    while inp!="online" or inp!="offline":
+        if inp=="online":
+            online()
+        elif inp=="offline":
+            offline()
+        else:
+            print("Invalid action")
+        inp=input("Connect to server or use offline mode? (online/offline): ").lower()
+        
         
     
 
@@ -407,18 +475,9 @@ if __name__ == "__main__":
     # local
     auth()
     
-    # stabilish connection with the server
-    if(connectToProxy()):
-        online()
-        print("Connected to a proxy")
-        
-        # online mode
-        #online()
-    else: 
-        exit()
-        print("No proxy available")
-        # offline mode
-        offline()
+    initial_interface()
+    
+    
 
 
 """ timeout 2 seconds
