@@ -352,7 +352,7 @@ def create_list():
     
     list_name=input("Enter list name: ")
     list_id=str(uuid.uuid4())
-    print("List id:",list_id)
+    print("List id:",list_id)   
     aworset=AWORSet(list_id,list_name,username)
     edit_list(aworset)
     print("Saving changes...")

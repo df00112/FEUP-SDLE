@@ -109,11 +109,14 @@ def run():
             print("msg:")
             print(msg)
             if len(msg) == 1:
-                if msg[0] not in (PPP_READY, PPP_HEARTBEAT):
+                if msg[0] not in (PPP_READY, PPP_HEARTBEAT,PING):
                     print("E: Invalid message from server: %s" % msg)
                 elif msg[0] == PPP_READY:
                     servers.ready(Server(address))
-                    
+                elif msg[0]==PING:
+                    backend.send(address, zmq.SNDMORE)
+                    backend.send(b"", zmq.SNDMORE)
+                    backend.send_string("alive")
             else:
                 address=msg[0]
                 msg=msg[1:]

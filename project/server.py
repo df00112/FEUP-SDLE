@@ -6,6 +6,7 @@ import json
 from AWORSet import AWORSet
 import uuid
 from utils import *
+import threading
 
 HEARTBEAT_LIVENESS = 3
 HEARTBEAT_INTERVAL = 1
@@ -33,6 +34,76 @@ LIST_RESPONSE_NOT_FOUND=b"\x12" # Broker sends this to client when the list is n
 
 PUB_LIST = ["tcp://*:6000", "tcp://*:6001", "tcp://*:6002"]
 SUB_LIST = ["tcp://localhost:6000", "tcp://localhost:6001", "tcp://localhost:6002"]
+
+class ZmqSubscriberThread(threading.Thread):
+    def __init__(self, sub_sockets, global_data, data_lock):
+        super(ZmqSubscriberThread, self).__init__()
+        self.sub_sockets = sub_sockets
+        self.global_data = global_data
+        self.data_lock = data_lock
+        self.stop_requested = False
+    def stop(self):
+        self.stop_requested = True
+    def run(self):
+        poller = zmq.Poller()
+
+        # Add each socket to the poller with the events you want to monitor (e.g., zmq.POLLIN)
+        for socket in self.sub_sockets:
+            poller.register(socket, zmq.POLLIN)
+
+        try:
+            while not self.stop_requested:
+                # Poll with no timeout
+                socks = dict(poller.poll())
+                if self.stop_requested:
+                    break
+                # See if a sub_socket is receiving a message
+                if socks:
+                    for sub_socket in self.sub_sockets:
+                        if sub_socket in socks and socks[sub_socket] == zmq.POLLIN:
+                            # Receive message from publisher
+
+                            # Access and modify the global variable with a lock
+                            with self.data_lock:
+                                message = sub_socket.recv_multipart() 
+                                request=message[0]
+                                print("PUB MESSAGE: ",message[0])
+                                print("PUB REQUEST: ",request)
+                                if request==LIST_CREATE:
+                                    print("PUB LIST CREATE")
+                                    message=json.loads(message[1].decode("utf-8"))
+                                    aworset=json_to_aworset(message)
+                                    aworset.lookup()
+                                    self.global_data.append(aworset)
+                                elif request==LIST_UPDATE:
+                                    print("PUB LIST UPDATE")
+                                    lst=json.loads(message[1])
+                                    aworset=json_to_aworset(lst)
+                                    for awor in self.global_data:
+                                        if awor.list_id==aworset.list_id:
+                                            awor.join(aworset)                                            
+                                            break
+                                elif request==LIST_DELETE:
+                                    print("PUB LIST DELETE")
+                                    list_id=message[2].encode('utf-8')
+                                    for awor in self.global_data:
+                                        if awor.list_id==list_id:
+                                            self.global_data.remove(awor)
+                                            break
+                                
+                                for awor in self.global_data:
+                                    print("LIST ID: ",awor.list_id)
+                               
+
+                            break
+                else:
+                    print("No message received")
+
+        except KeyboardInterrupt:
+            return
+
+
+
 
 def read_data():
     with open("./data/cloud/data.json", "r") as f:
@@ -94,7 +165,7 @@ def server_socket(context, poller):
     server = context.socket(zmq.DEALER) # DEALER
     identity = b"%04X-%04X" % (randint(0, 0x10000), randint(0, 0x10000))
     server.setsockopt(zmq.IDENTITY, identity)
-    poller.register(server, zmq.POLLIN)
+    
     for proxy in PROXYLIST:
         print(f"Trying to connect to {proxy}")
         server.connect(proxy)
@@ -113,6 +184,7 @@ def server_socket(context, poller):
                     # Receive reply from server
                     message = server.recv_multipart()
                     print(f"Received reply: {message}")
+                    poller.register(server, zmq.POLLIN)
                     server.send(PPP_READY)
                     return server
                 else:
@@ -121,7 +193,6 @@ def server_socket(context, poller):
                     amountOfRetries += 1 
                     server= context.socket(zmq.DEALER)
                     server.setsockopt(zmq.IDENTITY, identity)
-                    poller.register(server, zmq.POLLIN)
                     server.connect(proxy)
         except KeyboardInterrupt:
             break
@@ -129,11 +200,6 @@ def server_socket(context, poller):
     print("Max retries reached. Exiting...")
     return None
 
-def send_to_all(msg):
-    global sub_sockets
-    for sub_socket in sub_sockets:
-        print("Sending to socket")
-        print(msg)
 
 def list_request(msg):
     global data
@@ -141,30 +207,36 @@ def list_request(msg):
     print(msg[1])
     list_id=msg[1].decode("utf-8")
     print(list_id)
-    for aworset in data:
-        if aworset.list_id==list_id:
-            return [LIST_RESPONSE,aworset_to_json(aworset)]
+    with data_lock:
+        for aworset in data:
+            if aworset.list_id==list_id:
+                return [LIST_RESPONSE,aworset_to_json(aworset)]
     return [LIST_RESPONSE_NOT_FOUND,"not found"]
 
 
 def list_update(msg):
     global data
+    global pub_socket
     print("IN LIST UPDATE")
     print("MSG: ",msg)
     lst=json.loads(msg[1])
     aworset=json_to_aworset(lst)
     temp=None
-    for awor in data:
-        if awor.list_id==aworset.list_id:
-            awor.join(aworset)
-            temp=awor
-            break
-        
+    with data_lock:
+        for awor in data:
+            if awor.list_id==aworset.list_id:
+                awor.join(aworset)
+                temp=awor
+                break
     update_database(temp)
+    pub_socket.send(LIST_UPDATE,zmq.SNDMORE)
+    pub_socket.send_string(aworset_to_json(aworset))
+
     return [LIST_UPDATE_RESPONSE,"updated"]
 
 def list_delete(msg):
     global data
+    global pub_socket
     # msg = [LIST_DELETE, list_id, userID]
     print("IN LIST DELETE")
     print("MSG: ",msg)
@@ -172,14 +244,15 @@ def list_delete(msg):
     user=msg[1].decode('utf-8') # testar
     print("LIST ID: ",list_id)
     print("USER: ",user)
-    for awor in data:
-        if awor.list_id==list_id:
-            if awor.owner!=user:
-                return [LIST_DELETE_DENIED, "denied"]
-            else:
-                data.remove(awor)
+    with data_lock:
+        for awor in data:
+            if awor.list_id==list_id:
+                if awor.owner!=user:
+                    return [LIST_DELETE_DENIED, "denied"]
+                else:
+                    data.remove(awor)
+        
     
-      
         
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
@@ -199,16 +272,26 @@ def list_delete(msg):
         # Write the updated data back to the file
         with open("./data/cloud/data.json", "w") as f:
             json.dump(json_data, f, indent=2)
+        
+        pub_socket.send(LIST_DELETE,zmq.SNDMORE)
+        pub_socket.send_string(list_id)
+        
         return [LIST_DELETE_RESPONSE,"deleted"]
    
 def list_create(msg):
     global data
+    global pub_socket
+    global data_lock
     message=json.loads(msg[1])
     aworset=json_to_aworset(message)
-    data.append(aworset)
+    with data_lock:
+        data.append(aworset)
     create_list_database(aworset)
     for awor in data:
         print("LIST ID: ",awor.list_id)
+    
+    pub_socket.send(LIST_CREATE,zmq.SNDMORE)
+    pub_socket.send_string(aworset_to_json(aworset))
     return [LIST_CREATE_RESPONSE,"created"]
 
 def handle_request(msg):
@@ -287,7 +370,7 @@ def run():
         
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in ["0","1"]:
+    if len(sys.argv) != 2 or sys.argv[1] not in ["0","1","2"]:
         print("Usage: python3 broker.py <argument>")
         sys.exit(1)
 
@@ -313,13 +396,26 @@ if __name__ == "__main__":
             sub_socket.setsockopt(zmq.SUBSCRIBE, b"")
             sub_sockets.append(sub_socket)
 
+    
+    data_lock=threading.Lock()
+    subscriber_thread = ZmqSubscriberThread(sub_sockets, data, data_lock)
+    subscriber_thread.start()
+  
+            
     liveness = HEARTBEAT_LIVENESS
     interval = INTERVAL_INIT
     heartbeat_at = time.time() + HEARTBEAT_INTERVAL
-    run()
-    
-    
-    
+    try:
+        run()
+        
+        
+        
+    except KeyboardInterrupt:
+        
+        subscriber_thread.stop()
+        
+        print("W: interrupt received, killing server...")
+        sys.exit()
     
     
     
