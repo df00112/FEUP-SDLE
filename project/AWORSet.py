@@ -53,11 +53,16 @@ class AWORSet:
                 self.context.add(context)
                 self.items[context]= otherList.items.get(context, None)
             else:
+                print("Item")
+                print(otherList.items.get(context))
                 if otherList.items.get(context) is None:
                     self.remove(context[0])
                 else:
-                    self.items[context].quantity.merge(otherList.items[context].quantity)
-                    self.items[context].bought_status.merge(otherList.items[context].bought_status)
+                    if self.items.get(context) is None:
+                        continue
+                    else:
+                        self.items[context].quantity.merge(otherList.items[context].quantity)
+                        self.items[context].bought_status.merge(otherList.items[context].bought_status)
         
         self.cCounter=max(self.cCounter,otherList.cCounter)
             
@@ -98,25 +103,23 @@ class AWORSet:
 
 # Example usage
 """ shopping_list = AWORSet(12312,"carralista","AAAAHHHAHAHAHA")
-shopping_list.add("Apples", 50,1)  
-shopping_list.add("Bananas", 10,0)
+shopping_list.add_new("Apples", 50,1)  
+shopping_list.add_new("Bananas", 10,0)
 
 
 shopping_list2 = AWORSet(12312,"carralista","AAAAHHHAHAHAHA")
-shopping_list2.add("Apples", 50,1)
-shopping_list2.add("Bananas", 10,0)
-shopping_list2.add("Oranges", 10,1)
-shopping_list2.remove("Bananas")
-shopping_list2.update_item_quantity("Apples", 100)
-shopping_list2.update_item_status("Apples", 0)
-shopping_list2.update_item_status("Apples", 1)
-shopping_list2.update_item_status("Apples", 0)
-shopping_list2.update_item_quantity("Apples", 50)
-shopping_list2.update_item_quantity("Apples", 75)
-shopping_list2.add("Bananas", 20,0)
+shopping_list2.add_new("Apples", 50,1)
+shopping_list2.add_new("Bananas", 10,0)
+shopping_list2.add_new("Oranges", 10,1)
 
+shop3=AWORSet(12312,"carralista","AAAAHHHAHAHAHA")
+shop3.add_new("Apples", 50,1)
+shop3.add_new("Bananas", 10,0)
+shop3.remove("Bananas")
 
+shopping_list.join(shop3)
 shopping_list.join(shopping_list2)
 
+
 print("Current shopping list:")
-shopping_list.lookup() """
+shopping_list.lookup()  """

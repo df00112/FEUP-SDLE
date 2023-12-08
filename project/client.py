@@ -17,57 +17,18 @@ LIST_DELETE_RESPONSE=b"\x08" # Broker sends this to client with the delete statu
 LIST_CREATE=b"\x09" # Client sends this to broker to create a list
 LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
 LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
+LIST_RESPONSE_NOT_FOUND=b"\x12"
 LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to broker to update the list when offline
-"""
-def receive_messages():
-    while True:
-        update_message = subscriber.recv_string()
-        print(f"Received update: {update_message}")
-        
-        
 
-# Subscribe to shopping list updates
-subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
-
- while True:
-    try:
-        action = input("Enter an action (add/delete/quit): ").lower()
-
-        if action == "add":
-            item = input("Enter an item to add: ")
-            client.send_json({"action": "add", "item": item})
-            response = client.recv_json()
-            print(response["status"])
-
-        elif action == "delete":
-            item = input("Enter an item to delete: ")
-            client.send_json({"action": "delete", "item": item})
-            response = client.recv_json()
-            print(response["status"])
-
-        elif action == "quit":
-            break 
-
-        
-
-    except KeyboardInterrupt:
-        break
-
-subscriber.close()
-client.close()
-context.term()
-
-
-"""
 def check_response(message_type):
     if message_type==LIST_RESPONSE:
         print("List found")
         return True
     elif message_type==LIST_UPDATE_RESPONSE:
-        print("List updated")
+        #print("List update")
         return True
     elif message_type==LIST_DELETE_RESPONSE:
-        print("List deleted")
+        #print("List deleted")
         return True
     elif message_type==LIST_DELETE_DENIED:
         print("Not owner of the list")
@@ -75,7 +36,7 @@ def check_response(message_type):
     elif message_type==LIST_CREATE_RESPONSE:
         print("List created")
         return True
-    else:
+    elif message_type==LIST_RESPONSE_NOT_FOUND:
         print("List not found")
         return False
 
@@ -83,7 +44,7 @@ def send_message(action, message):
     global client
     global username
     global used_proxy
-    print("MESSAGE: ",message)
+    #print("MESSAGE: ",message)
     if connectToProxy()==False:
         return None
     try:
@@ -101,7 +62,6 @@ def send_message(action, message):
             # Wait for the specified timeout for a response
             socks = dict(poller.poll(TIMEOUT))
             if client in socks and socks[client] == zmq.POLLIN:
-                print("hAHAHAHAH")
                 # Receive reply from server
                 message = client.recv_multipart()
                 response=check_response(message[0])
@@ -114,7 +74,11 @@ def send_message(action, message):
                 amountOfRetries += 1    
                 client.close()
                 client= context.socket(zmq.REQ)
-                client.connect(used_proxy)   
+                client.connect(used_proxy) 
+        
+        if amountOfRetries==MAX_RETRIES:
+            print("Max retries reached. Exiting...")
+            return None  
     except KeyboardInterrupt:
         return None
 
@@ -414,6 +378,7 @@ def create_list():
     save_locally(list_id,aworset_to_json(aworset))
     print("Changes saved locally. Sending changes to the server...")
     response=send_message(LIST_CREATE,aworset_to_json(aworset))
+    print("Response:",response)
     if response!="created":
         print("Error creating list, try again at a later time")
         
@@ -442,10 +407,11 @@ def list_edit():
     save_locally(list_id,aworset_to_json(aworset))
     print("Changes saved locally. Sending changes to the server...")
     response=send_message(LIST_UPDATE,aworset_to_json(aworset))
-    while response!="updated":
-        print("Response:",response)
-        response=send_message(LIST_UPDATE,aworset_to_json(aworset))
-
+    print("Response:",response)
+    
+        
+    
+    
 def initial_interface():
     inp=input("Connect to server or use offline mode? (online/offline): ").lower()
     while inp!="online" or inp!="offline":
@@ -480,16 +446,4 @@ if __name__ == "__main__":
     
 
 
-""" timeout 2 seconds
-    client.send_string(f"{name}|{password}")
-    socks=dict(poller.poll(2000))
-    if socks:
-        if socks.get(client) == zmq.POLLIN:
-            message = client.recv_string(zmq.NOBLOCK)
-            print(message)
-            if message=="Authentication successful":
-                break
-    else:    
-        print("error: Server is not online")
-        break     """
 

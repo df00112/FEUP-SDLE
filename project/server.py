@@ -9,7 +9,7 @@ from utils import *
 import threading
 
 HEARTBEAT_LIVENESS = 3
-HEARTBEAT_INTERVAL = 1
+HEARTBEAT_INTERVAL = 2
 INTERVAL_INIT = 1
 INTERVAL_MAX = 32
 
@@ -72,7 +72,7 @@ class ZmqSubscriberThread(threading.Thread):
                                 print("PUB MESSAGE: ",message[0])
                                 print("PUB REQUEST: ",request)
                                 if request==LIST_CREATE:
-                                    print("PUB LIST CREATE")
+                                    #print("PUB LIST CREATE")
                                     message=json.loads(message[1].decode("utf-8"))
                                     aworset=json_to_aworset(message)
                                     aworset.lookup()
@@ -86,13 +86,13 @@ class ZmqSubscriberThread(threading.Thread):
                                             awor.join(aworset)                                            
                                             break
                                 elif request==LIST_DELETE:
-                                    print("PUB LIST DELETE")
+                                    #print("PUB LIST DELETE")
                                     list_id=message[2].encode('utf-8')
                                     for awor in self.global_data:
                                         if awor.list_id==list_id:
                                             self.global_data.remove(awor)
                                             break
-                                
+                                print("PUB LISTS IDS:")
                                 for awor in self.global_data:
                                     print("LIST ID: ",awor.list_id)
                                
@@ -238,8 +238,10 @@ def list_update(msg):
                 break
             
     # That means that its from the offline mode
-    if temp is None:
+    if temp is None and msg[0]==LIST_UPDATE_OFFLINE:
         temp=aworset
+    else :
+        return [LIST_UPDATE_RESPONSE,"not found"]
     offlineMode=False if msg[0]==LIST_UPDATE else True 
            
     update_database(temp,offlineMode)
@@ -329,7 +331,8 @@ def run():
     global heartbeat_at
     global server
     global context
-
+    global data
+    global data_lock
     poller = zmq.Poller()
     server = server_socket(context, poller)
     if server is None:
@@ -342,16 +345,13 @@ def run():
 
         # Handle server activity on backend
         if socks.get(server) == zmq.POLLIN:
-            #  Get message
-            #  - 3-part envelope + content -> request
-            #  - 1-part HEARTBEAT -> heartbeat
+           
             frames = server.recv_multipart()
-            #print(f"Received message: {frames}")
             if not frames:
                 break # Interrupted
-            #print("Frame size: ",len(frames))
+            
             if (len(frames) == 4) or (len(frames) == 5):
-                print("Frames: ",frames)
+                #print("Frames: ",frames)
                 response=handle_request(frames[2:])
                 print("Response: ",response)
                 server.send(frames[0],zmq.SNDMORE)
@@ -363,9 +363,10 @@ def run():
                     liveness = HEARTBEAT_LIVENESS
                 elif frames[0]== REREAD_DATABASE:
                     print("REREAD DATABASE")
-                    data=read_data()
-                    print("DATA: ",data)
-                    print("DATA LEN: ",len(data))
+                    with data_lock:
+                        data=read_data()
+                        print("DATA: ",data)
+                        print("DATA LEN: ",len(data))
             else:
                 print("E: Invalid message: %s" % frames)
             interval = INTERVAL_INIT
@@ -433,7 +434,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         
         subscriber_thread.stop()
-        
+        subscriber_thread.join()
         print("W: interrupt received, killing server...")
         sys.exit()
     

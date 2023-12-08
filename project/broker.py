@@ -23,12 +23,13 @@ LIST_DELETE_RESPONSE=b"\x08" # Broker sends this to client with the delete statu
 LIST_CREATE=b"\x09" # Client sends this to broker to create a list
 LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
 LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
+LIST_RESPONSE_NOT_FOUND=b"\x12"
 LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to broker to update a list in offline mode
 
 REREAD_DATABASE=b"\x12" # Broker sends this to server to request a database reread
 
 HEARTBEAT_LIVENESS = 3     # 3..5 is reasonable
-HEARTBEAT_INTERVAL = 1.0   # Seconds
+HEARTBEAT_INTERVAL = 2.0   # Seconds
 ONE_MINUTE_INTERVAL = 60  # in seconds
 
 #  Paranoid Pirate Protocol constants
