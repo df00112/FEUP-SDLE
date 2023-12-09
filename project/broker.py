@@ -1,9 +1,3 @@
-#
-##  Paranoid Pirate queue
-#
-#   Author: Daniel Lundin <dln(at)eintr(dot)org>
-#
-
 from collections import OrderedDict
 import sys
 import time
@@ -32,17 +26,18 @@ HEARTBEAT_LIVENESS = 3     # 3..5 is reasonable
 HEARTBEAT_INTERVAL = 2.0   # Seconds
 ONE_MINUTE_INTERVAL = 60  # in seconds
 
-#  Paranoid Pirate Protocol constants
+
 PPP_READY = b"\x01"      # Signals server is ready
 PPP_HEARTBEAT = b"\x02"  # Signals server heartbeat
 
   
-
+# Server class inspired from the Paranoid Pirate queue
 class Server(object):
     def __init__(self, address):
         self.address = address
         self.expiry = time.time() + HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS
 
+# Queue implementation inspired from the Paranoid Pirate queue
 class ServerQueue(object):
     def __init__(self):
         self.queue = OrderedDict()
@@ -51,8 +46,8 @@ class ServerQueue(object):
         self.queue.pop(server.address, None)
         self.queue[server.address] = server
 
+    # Look for & kill expired servers.
     def purge(self):
-        """Look for & kill expired servers."""
         t = time.time()
         expired = []
         for address, server in self.queue.items():
@@ -66,6 +61,7 @@ class ServerQueue(object):
         address, server = self.queue.popitem(False)
         return address
 
+# Check if the request is valid
 def check_request(request):
     
     if(request[0] == PING):
@@ -83,7 +79,8 @@ def check_request(request):
     return [False,False]
 
 
-
+# The main loop has two parts. First we poll workers and our front-end
+# client, second we poll both sockets together if we have available workers
 def run():
     global servers
     global poll_servers
@@ -93,14 +90,14 @@ def run():
     global backend
     global one_minute_at
     while True:
-        # MUDAR ESTE  == QUANDO TIVERMOS SERVERS
+        # Poll front-end only if we have available workers
         if len(servers.queue) != 0:
             poller = poll_both
         else:
             poller = poll_servers
         socks = dict(poller.poll(HEARTBEAT_INTERVAL * 1000))
 
-        # Handle server activity on backend
+        # Handle  server request
         if socks.get(backend) == zmq.POLLIN:
             # Use server address for LRU routing
             frames = backend.recv_multipart()
@@ -108,7 +105,7 @@ def run():
                 break
             print("frames:",frames)
             address = frames[0]
-            # VER SE É SUPOSTO MANDAR ISTO SEMPRE
+            
             servers.ready(Server(address))
 
             # Validate control message, or return reply to client
@@ -139,18 +136,14 @@ def run():
                     msg = [server, PPP_HEARTBEAT]
                     backend.send_multipart(msg)
                 heartbeat_at = time.time() + HEARTBEAT_INTERVAL
-            
+            # Send reread request to servers if it's time
             if time.time() >= one_minute_at:
                 for server in servers.queue:
                     msg = [server, REREAD_DATABASE]
                     backend.send_multipart(msg)
                 one_minute_at = time.time() + ONE_MINUTE_INTERVAL
             
-            
-            """ backend.send(address, zmq.SNDMORE)
-            backend.send(b"", zmq.SNDMORE)
-            backend.send_string(LIST_REQUEST, zmq.SNDMORE)
-            backend.send_string("Hello") """
+        # Handle client request
         if socks.get(frontend) == zmq.POLLIN:
             frames = frontend.recv_multipart()
             if not frames:
@@ -161,6 +154,7 @@ def run():
             if(request[0]==False):
                 print("E: Invalid message from client: %s" % msg)
                 continue
+            # If its a ping request, request[0] is TRUE
             elif request[0] == True:
                 frontend.send(address, zmq.SNDMORE)
                 frontend.send(b"", zmq.SNDMORE)

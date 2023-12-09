@@ -1,25 +1,24 @@
 import zmq
 import json
-import datetime
-import pytz
 from utils import *
 import uuid
 PROXYLIST=["tcp://127.0.0.1:5555","tcp://127.0.0.1:5557"]
 MAX_RETRIES=3
 TIMEOUT=4500 #milliseconds
 
-LIST_REQUEST=b"\x03" # Client sends this to broker to request a list
-LIST_RESPONSE=b"\x04" # Broker sends this to client with the list
-LIST_UPDATE=b"\x05" # Client sends this to broker to update the list
-LIST_UPDATE_RESPONSE=b"\x06" # Broker sends this to client with the update status
-LIST_DELETE=b"\x07" # Client sends this to broker to delete a list
-LIST_DELETE_RESPONSE=b"\x08" # Broker sends this to client with the delete status
-LIST_CREATE=b"\x09" # Client sends this to broker to create a list
-LIST_CREATE_RESPONSE=b"\x10" # Broker sends this to client with the create status
-LIST_DELETE_DENIED=b"\x11" # Broker sends this to client when the list owner is not the client
-LIST_RESPONSE_NOT_FOUND=b"\x12"
-LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to broker to update the list when offline
+LIST_REQUEST=b"\x03" # Client sends this to Server to request a list
+LIST_RESPONSE=b"\x04" # Server sends this to client with the list
+LIST_UPDATE=b"\x05" # Client sends this to Server to update the list
+LIST_UPDATE_RESPONSE=b"\x06" # Server sends this to client with the update status
+LIST_DELETE=b"\x07" # Client sends this to Server to delete a list
+LIST_DELETE_RESPONSE=b"\x08" # Server sends this to client with the delete status
+LIST_CREATE=b"\x09" # Client sends this to Server to create a list
+LIST_CREATE_RESPONSE=b"\x10" # Server sends this to client with the create status
+LIST_DELETE_DENIED=b"\x11" # Server sends this to client when the list owner is not the client
+LIST_RESPONSE_NOT_FOUND=b"\x12" # Server sends this to client when the list is not found
+LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to Server to update the list when offline
 
+# Check the response from the server
 def check_response(message_type):
     if message_type==LIST_RESPONSE:
         print("List found")
@@ -40,19 +39,21 @@ def check_response(message_type):
         print("List not found")
         return False
 
+# Sends a request to the server
 def send_message(action, message):
     global client
     global username
     global used_proxy
-    #print("MESSAGE: ",message)
+   
     if connectToProxy()==False:
         return None
     try:
         amountOfRetries = 0
-        
+        # Retry sending the message if no response is received
         while amountOfRetries < MAX_RETRIES:
             print("Sending message...")
-            client.send(action, zmq.SNDMORE)            
+            client.send(action, zmq.SNDMORE)  
+            # If the action is LIST_DELETE, the username is  needed          
             if action==LIST_DELETE:
                 client.send_string(username,zmq.SNDMORE)
             client.send_string(message)
@@ -102,21 +103,23 @@ def auth():
         else:
             print("Authentication failed")
 
-
+# Display a list
 def display_list(aworset):
     print("\n=====================================")
     print(f"Shopping list: {aworset.list_name}")
     aworset.lookup()
     print("=====================================\n")
 
+# Edit a list
 def edit_list(aworset):
      
     while True:
-        # display the items
+        # display the list information
         display_list(aworset)
 
         action=input("Enter an action (Add/Update/Remove/Quit): ").lower()
 
+        # add an item
         if action == "add":
             item=input("Enter a new item to add: ")
             while item in aworset.get_items_names():
@@ -126,9 +129,11 @@ def edit_list(aworset):
             while not quantity.isnumeric():
                 print("Invalid quantity")
                 quantity=input("Enter the quantity: ")
+                
             aworset.add_new(item,int(quantity),0)
             print("Item added")
-            
+        
+        # update an item
         elif action == "update":
             item=input("Enter an item to update: ")
             while item not in aworset.get_items_names():
@@ -146,11 +151,13 @@ def edit_list(aworset):
                 bought=input("Enter the status (bought/not bought): ").lower()
             
             bought= 0 if bought == "not bought" else 1
+            
             aworset.update_item_quantity(item,int(quantity))
             aworset.update_item_status(item,bought)
             
             print("Item updated")
         
+        # remove an item
         elif action == "remove":
             item=input("Enter an item to remove: ")
             while item not in aworset.get_items_names():
@@ -183,7 +190,7 @@ def save_locally(list_id, listToBeSaved):
     with open("./data/local/users.json", "w") as f:
         json.dump(json_data, f, indent=2)
 
-
+# Offline mode edit list
 def offline_edit():
     global username
     global data
@@ -191,12 +198,9 @@ def offline_edit():
     # display the shopping lists
     print("\n=====================================")
     print(data[username]['name'])
-    list_keys = list(data[username]["lists"].keys())
     print("Shopping lists:")
     for list_id in data[username]["lists"]:
-        #print(data[username]['lists'][list_id])
         list_info  = json.loads(data[username]['lists'][list_id])
-
         list_name = list_info ['list_name']
         print(list_name,":", list_id)
     while True:
@@ -228,7 +232,7 @@ def offline_edit():
             
             break
 
-
+# Offline mode create list
 def offline_create():
     global username
     global data
@@ -254,7 +258,7 @@ def offline_create():
             print("Error sending list, try again at a later time")
         
 
-
+# Offline mode
 def offline():
     global username
     global data
@@ -273,12 +277,13 @@ def offline():
         inp=input("Select an action: (create/edit) list or (quit): ").lower()
     
 
-
+# Connects to a proxy
 def connectToProxy():
     global context
     global client
     global used_proxy
     poller = zmq.Poller()
+    # Try to connect to the first proxy available
     for proxy in PROXYLIST:
         print(f"Trying to connect to {proxy}")
         client= context.socket(zmq.REQ)
@@ -313,6 +318,7 @@ def connectToProxy():
     print("Max retries reached. Exiting...")
     return False
 
+# Online mode
 def online():
     global client
     global username
@@ -334,9 +340,10 @@ def online():
 def delete_list():
     global username
     global client
-    
+    global data
     list_id=input("Enter list id to delete: ")
     response=send_message(LIST_REQUEST,list_id)
+    print("Response:",response)
     while response=="list not found":
         list_id=input("Enter list id:")
         response=send_message(LIST_REQUEST,list_id)
@@ -345,15 +352,13 @@ def delete_list():
         return
     
     response=send_message(LIST_DELETE,list_id)
-    try:
-        while response!="deleted":
-            print("Response:",response)
-            if(response=="denied"):
-                print("You are not the owner of the list")
-                return
-            response=send_message(LIST_DELETE,list_id)
-    except KeyboardInterrupt:
-        return    
+    print("Response:",response)
+    
+    if response!="deleted":
+        if response=="denied":
+            print("You are not the owner of the list")
+            return
+        return
     print("Deleting list locally...")
     
     with open("./data/local/users.json", "r") as f:
@@ -365,7 +370,9 @@ def delete_list():
     with open("./data/local/users.json", "w") as f:
         json.dump(json_data, f, indent=2)
     
-
+    
+    
+# Create a new list
 def create_list():
     global username
     global client
@@ -383,7 +390,7 @@ def create_list():
     if response!="created":
         print("Error creating list, try again at a later time")
         
-    
+# Online mode edit list
 def list_edit():
     global username
     global client
@@ -391,7 +398,7 @@ def list_edit():
     list_id=input("Enter list id:")
     
     response=send_message(LIST_REQUEST,list_id)
-    
+    # check if the list exists
     while response=="list not found":
         list_id=input("Enter list id:")
         response=send_message(LIST_REQUEST,list_id)
@@ -434,15 +441,15 @@ if __name__ == "__main__":
     context = zmq.Context()
     client = context.socket(zmq.REQ)
     used_proxy = None
-    # open the json file
+    # Reads the initial data
     with open("./data/local/users.json", "r") as f:
         data = json.load(f)
 
     data = json.loads(data)
-    username="john_doe"
-    # local
+   
+    # Authentication
     auth()
-    
+    # Initial interface
     initial_interface()
     
     

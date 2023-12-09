@@ -15,7 +15,6 @@ HEARTBEAT_INTERVAL = 2
 INTERVAL_INIT = 1
 INTERVAL_MAX = 32
 
-#  Paranoid Pirate Protocol constants
 PPP_READY = b"\x01"      # Signals server is ready
 PPP_HEARTBEAT = b"\x02"  # Signals server heartbeat
 
@@ -39,19 +38,24 @@ LIST_UPDATE_OFFLINE=b"\x13" # Client sends this to broker to update a list in of
 PUB_LIST = ["tcp://*:6000", "tcp://*:6001", "tcp://*:6002"]
 SUB_LIST = ["tcp://localhost:6000", "tcp://localhost:6001", "tcp://localhost:6002"]
 
+# This class is responsible for receiving messages from the publisher
 class ZmqSubscriberThread(threading.Thread):
-    def __init__(self, sub_sockets, global_data, data_lock):
+    def __init__(self, sub_sockets, global_data, data_locka):
+        global data
+        global data_lock
         super(ZmqSubscriberThread, self).__init__()
         self.sub_sockets = sub_sockets
         self.global_data = global_data
-        self.data_lock = data_lock
+        self.data_lock = data_locka
         self.stop_requested = False
     def stop(self):
         self.stop_requested = True
     def run(self):
+        global data
+        global data_lock
         poller = zmq.Poller()
 
-        # Add each socket to the poller with the events you want to monitor (e.g., zmq.POLLIN)
+       
         for socket in self.sub_sockets:
             poller.register(socket, zmq.POLLIN)
 
@@ -65,38 +69,39 @@ class ZmqSubscriberThread(threading.Thread):
                 if socks:
                     for sub_socket in self.sub_sockets:
                         if sub_socket in socks and socks[sub_socket] == zmq.POLLIN:
+                           
                             # Receive message from publisher
-
                             # Access and modify the global variable with a lock
-                            with self.data_lock:
+                            with data_lock:
                                 message = sub_socket.recv_multipart() 
                                 request=message[0]
                                 print("PUB MESSAGE: ",message[0])
                                 print("PUB REQUEST: ",request)
                                 if request==LIST_CREATE:
-                                    #print("PUB LIST CREATE")
+                                    print("PUB LIST CREATE")
                                     message=json.loads(message[1].decode("utf-8"))
                                     aworset=json_to_aworset(message)
                                     aworset.lookup()
-                                    self.global_data.append(aworset)
+                                    data.append(aworset)
                                 elif request==LIST_UPDATE:
                                     print("PUB LIST UPDATE")
                                     lst=json.loads(message[1])
                                     aworset=json_to_aworset(lst)
-                                    for awor in self.global_data:
+                                    for awor in data:
                                         if awor.list_id==aworset.list_id:
                                             awor.join(aworset)                                            
                                             break
                                 elif request==LIST_DELETE:
-                                    #print("PUB LIST DELETE")
-                                    list_id=message[2].encode('utf-8')
-                                    for awor in self.global_data:
+                                    print("PUB LIST DELETE")
+                                    list_id=message[1].decode('utf-8')
+                                    for awor in data:
                                         if awor.list_id==list_id:
-                                            self.global_data.remove(awor)
+                                            data.remove(awor)
                                             break
-                                print("PUB LISTS IDS:")
-                                for awor in self.global_data:
-                                    print("LIST ID: ",awor.list_id)
+                                # prints to check if the data is correct
+                                print("PUB LISTS :")
+                                for awor in data:
+                                    print("LIST name: ",awor.list_name," id: ",awor.list_id)
                                
 
                             break
@@ -108,7 +113,7 @@ class ZmqSubscriberThread(threading.Thread):
 
 
 
-
+# Read the data from the database
 def read_data():
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
@@ -122,6 +127,7 @@ def read_data():
     
     return lists
 
+# Update the database with the new data
 def update_database(aworset,offlineMode=False):
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
@@ -148,9 +154,11 @@ def update_database(aworset,offlineMode=False):
             # remove it from the server
             data.remove(aworset)
         else:
+            # The list only exists in the client so we need to add it to the database
             data.append(aworset)
             create_list_database(aworset)
 
+# Create a new list in the database
 def create_list_database(aworset):
     with open("./data/cloud/data.json", "r") as f:
         json_data = json.load(f)
@@ -169,12 +177,11 @@ def create_list_database(aworset):
         with open("./data/cloud/data.json", "w") as f:
             json.dump(json_data, f, indent=2)
 
+# Create a new socket connected to the first working broker
 def server_socket(context, poller):
     global data
     global data_lock
-    """Helper function that returns a new configured socket
-       connected to the Paranoid Pirate queue"""
-    server = context.socket(zmq.DEALER) # DEALER
+    server = context.socket(zmq.DEALER) 
     identity = b"%04X-%04X" % (randint(0, 0x10000), randint(0, 0x10000))
     server.setsockopt(zmq.IDENTITY, identity)
     
@@ -183,7 +190,7 @@ def server_socket(context, poller):
         server.connect(proxy)
         try:
             amountOfRetries = 0
-            
+            # Try to connect to the proxy for a maximum of MAX_RETRIES times
             while amountOfRetries < MAX_RETRIES:
                 server.send_multipart([b'ping'])
                 
@@ -214,7 +221,8 @@ def server_socket(context, poller):
     print("Max retries reached. Exiting...")
     return None
 
-
+# deal with LIST_REQUEST requests
+# return the list if it exists
 def list_request(msg):
     global data
     print("IN LIST REQUEST")
@@ -227,7 +235,8 @@ def list_request(msg):
                 return [LIST_RESPONSE,aworset_to_json(aworset)]
     return [LIST_RESPONSE_NOT_FOUND,"not found"]
 
-
+# deal with LIST_UPDATE and LIST_UPDATE_OFFLINE requests
+# update the list if it exists
 def list_update(msg):
     global data
     global pub_socket
@@ -253,13 +262,16 @@ def list_update(msg):
     elif temp is None:
         return [LIST_UPDATE_RESPONSE,"not found"]
     offlineMode=False if msg[0]==LIST_UPDATE else True 
-           
+         
     update_database(temp,offlineMode)
+    # Send the update to the other servers
     pub_socket.send(LIST_UPDATE,zmq.SNDMORE)
     pub_socket.send_string(aworset_to_json(aworset))
 
     return [LIST_UPDATE_RESPONSE,"updated"]
 
+# deal with LIST_DELETE requests
+# delete the list if it exists
 def list_delete(msg):
     global data
     global pub_socket
@@ -299,11 +311,14 @@ def list_delete(msg):
         with open("./data/cloud/data.json", "w") as f:
             json.dump(json_data, f, indent=2)
         
+        # Send the delete to the other servers
         pub_socket.send(LIST_DELETE,zmq.SNDMORE)
         pub_socket.send_string(list_id)
         
         return [LIST_DELETE_RESPONSE,"deleted"]
-   
+  
+# deal with LIST_CREATE requests
+# create the list if it doesn't exist 
 def list_create(msg):
     global data
     global pub_socket
@@ -316,10 +331,12 @@ def list_create(msg):
     for awor in data:
         print("LIST ID: ",awor.list_id)
     
+    # Send the create to the other servers
     pub_socket.send(LIST_CREATE,zmq.SNDMORE)
     pub_socket.send_string(aworset_to_json(aworset))
     return [LIST_CREATE_RESPONSE,"created"]
 
+# Handle the request received from the client
 def handle_request(msg):
     request_type=msg[0]
     print(f"Request type: {request_type}")
@@ -335,6 +352,7 @@ def handle_request(msg):
     else:
         return [None, None]
 
+# Main loop
 def run():
     global liveness
     global interval
@@ -344,12 +362,13 @@ def run():
     global data
     global data_lock
     poller = zmq.Poller()
+    # try to connect to a proxy
     server = server_socket(context, poller)
     if server is None:
         print("Could not connect to any proxy. Exiting...")
         return
 
-    cycles = 0
+
     while True:
         socks = dict(poller.poll(HEARTBEAT_INTERVAL * 1000))
 
@@ -360,8 +379,8 @@ def run():
             if not frames:
                 break # Interrupted
             
+            # Check if the message is a valid request
             if (len(frames) == 4) or (len(frames) == 5):
-                #print("Frames: ",frames)
                 response=handle_request(frames[2:])
                 print("Response: ",response)
                 server.send(frames[0],zmq.SNDMORE)
@@ -369,7 +388,7 @@ def run():
                 server.send_string(response[1])
             elif len(frames) == 1 :
                 if frames[0] == PPP_HEARTBEAT:
-                    #print("I: Queue heartbeat")
+                    print("I: Queue heartbeat")
                     liveness = HEARTBEAT_LIVENESS
                 elif frames[0]== REREAD_DATABASE:
                     print("REREAD DATABASE")
@@ -394,9 +413,11 @@ def run():
                 server.close()
                 server = server_socket(context, poller)
                 liveness = HEARTBEAT_LIVENESS
+                
+        # Send heartbeat to broker if it's time
         if time.time() > heartbeat_at:
             heartbeat_at = time.time() + HEARTBEAT_INTERVAL
-            #print("I: server heartbeat")
+            print("I: server heartbeat")
             server.send(PPP_HEARTBEAT)
         
 
@@ -406,16 +427,18 @@ if __name__ == "__main__":
         sys.exit(1)
 
     arg_value = int(sys.argv[1])
-
+    # Read the data from the database
     data=read_data()
     
     context = zmq.Context(1)
-
+    
+    # Create a publisher socket
     pub_context = zmq.Context(1)
     pub_socket = pub_context.socket(zmq.PUB)
     print("PUB: %s" % PUB_LIST[arg_value])
     pub_socket.bind(PUB_LIST[arg_value])
 
+    # Gather all the subscriber sockets
     sub_sockets = []
     for i in range(len(PUB_LIST)):
         if i == arg_value:
@@ -427,7 +450,7 @@ if __name__ == "__main__":
             sub_socket.setsockopt(zmq.SUBSCRIBE, b"")
             sub_sockets.append(sub_socket)
 
-    
+    # Create a thread to receive messages from the publishers
     data_lock=threading.Lock()
     subscriber_thread = ZmqSubscriberThread(sub_sockets, data, data_lock)
     subscriber_thread.start()

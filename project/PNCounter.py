@@ -1,4 +1,9 @@
 from GNCounter import GNCounter
+# CRDT Type: PN-Counter
+# Supports incrementing and decrementing
+# Merging is done by maintaining two G-Counters
+# One for positive increments and one for negative increments
+# The show result is done by subtracting the negative counter from the positive counter
 class PNCounter:
     def __init__(self,initial_value=0):
         self.positive_counter = GNCounter(initial_value)
@@ -17,7 +22,10 @@ class PNCounter:
             self.decrement(self.lookup() - finalAmount)
     
     def update_status(self,finalStatus):
-        if finalStatus == True:
+        if finalStatus == self.lookup():
+            return
+        
+        if finalStatus>self.lookup():
             self.increment(1)
         else:
             self.decrement(1)

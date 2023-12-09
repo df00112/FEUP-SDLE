@@ -1,11 +1,9 @@
 from AWORSet import AWORSet
 import json
 
+# Convert json to AWORSet
 def json_to_aworset(data):
-   
-    #print(data['list_id'])
-    
-    
+       
     aworset=AWORSet(data['list_id'],data['list_name'],data['owner'],data["cCounter"])
     
     for context in data['context']:
@@ -26,7 +24,7 @@ def json_to_aworset(data):
         
     return aworset
 
-
+# Convert AWORSet to json
 def aworset_to_json(aworset):
     converted_items = {str(key): value for key, value in aworset.items.items()}
     serialized_data = json.dumps({
