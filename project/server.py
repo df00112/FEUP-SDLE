@@ -239,14 +239,18 @@ def list_update(msg):
     with data_lock:
         for awor in data:
             if awor.list_id==aworset.list_id:
+                print("FOUND LIST")
                 awor.join(aworset)
+                print("Final result")
+                awor.lookup()
                 temp=awor
+                temp.lookup()
                 break
             
     # That means that its from the offline mode
     if temp is None and msg[0]==LIST_UPDATE_OFFLINE:
         temp=aworset
-    else :
+    elif temp is None:
         return [LIST_UPDATE_RESPONSE,"not found"]
     offlineMode=False if msg[0]==LIST_UPDATE else True 
            

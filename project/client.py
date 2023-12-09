@@ -404,6 +404,7 @@ def list_edit():
     print("New response:",response)
     aworset=json_to_aworset(response)
     edit_list(aworset)
+    aworset.lookup()
     print("Saving changes...")
     save_locally(list_id,aworset_to_json(aworset))
     print("Changes saved locally. Sending changes to the server...")
