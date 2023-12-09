@@ -192,7 +192,6 @@ def offline_edit():
     print("\n=====================================")
     print(data[username]['name'])
     list_keys = list(data[username]["lists"].keys())
-    print(f"Shopping lists: {list_keys}")
     print("Shopping lists:")
     for list_id in data[username]["lists"]:
         #print(data[username]['lists'][list_id])
@@ -221,9 +220,10 @@ def offline_edit():
             if inp=="y":
                 print("Sending changes to the server...")
                 response=send_message(LIST_UPDATE_OFFLINE,aworset_to_json(aworset))
-                while response!="updated":
-                    print("Response:",response)
-                    response=send_message(LIST_UPDATE_OFFLINE,aworset_to_json(aworset))
+                print("Response:",response)
+                if response!="updated":
+                    print("Error sending list, try again at a later time")
+                    
                 
             
             break
@@ -249,6 +249,7 @@ def offline_create():
     if inp=="y":
         print("Sending changes to the server...")
         response=send_message(LIST_CREATE,aworset_to_json(aworset))
+        print("Response:",response)
         if response!="created":
             print("Error sending list, try again at a later time")
         

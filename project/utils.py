@@ -3,7 +3,7 @@ import json
 
 def json_to_aworset(data):
    
-    print(data['list_id'])
+    #print(data['list_id'])
     
     
     aworset=AWORSet(data['list_id'],data['list_name'],data['owner'],data["cCounter"])
@@ -39,28 +39,3 @@ def aworset_to_json(aworset):
     }, default=lambda x: x.__dict__)
     return serialized_data
 
-# MUDAR PARA O UTILIZADOR
-def update_list(aworset):
-    """ with open("./data/cloud/serialized_data.json", "r") as f:
-        json_data = json.load(f)
-        
-    index_to_update = None
-    list_id=aworset.list_id
-    
-    
-    for i, item in enumerate(json_data):
-        aux=json.loads(item)
-        if "list_id" in item and aux["list_id"] == list_id:
-            index_to_update = i
-            break
-    
-    if index_to_update is not None:
-        # Update the data for the specific list
-        json_data[index_to_update] = aworset_to_json(aworset) 
-    else:
-        # List not found, add the new list
-        json_data.append(aworset_to_json(aworset))
-
-    with open("./data/cloud/serialized_data.json", "w") as f:
-        json.dump(json_data, f, indent=2)
- """

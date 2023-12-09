@@ -7,7 +7,9 @@ from AWORSet import AWORSet
 import uuid
 from utils import *
 import threading
+import signal
 
+signal.signal(signal.SIGINT, signal.SIG_DFL)
 HEARTBEAT_LIVENESS = 3
 HEARTBEAT_INTERVAL = 2
 INTERVAL_INIT = 1
@@ -168,6 +170,8 @@ def create_list_database(aworset):
             json.dump(json_data, f, indent=2)
 
 def server_socket(context, poller):
+    global data
+    global data_lock
     """Helper function that returns a new configured socket
        connected to the Paranoid Pirate queue"""
     server = context.socket(zmq.DEALER) # DEALER
@@ -191,6 +195,8 @@ def server_socket(context, poller):
                 if server in socks and socks[server] == zmq.POLLIN:
                     # Receive reply from server
                     message = server.recv_multipart()
+                    with data_lock:
+                        data=read_data()
                     print(f"Received reply: {message}")
                     poller.register(server, zmq.POLLIN)
                     server.send(PPP_READY)
