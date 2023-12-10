@@ -1,10 +1,11 @@
 import zmq
 
 def chat_proxy():
-    context = zmq.Context()
+    context = zmq.Context()    
 
-    frontend = context.socket(zmq.XPUB)
-    frontend.bind("tcp://*:5559")
+    frontend = context.socket(zmq.XPUB)  
+    frontend.bind("tcp://*:5559")        
+
 
     backend = context.socket(zmq.XSUB)
     backend.bind("tcp://*:5560")
