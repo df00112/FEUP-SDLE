@@ -2,6 +2,8 @@ import zmq
 import json
 from utils import *
 import uuid
+
+
 PROXYLIST=["tcp://127.0.0.1:5555","tcp://127.0.0.1:5557"]
 MAX_RETRIES=3
 TIMEOUT=4500 #milliseconds
